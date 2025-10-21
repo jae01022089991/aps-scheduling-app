@@ -1,0 +1,7 @@
+streamlit
+pandas
+plotly
+openpyxl
+ortools
+# 만약 MySQL 연결 코드를 추가했다면 아래 줄도 추가
+# mysql-connector-python
