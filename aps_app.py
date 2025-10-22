@@ -334,17 +334,14 @@ def run_app():
         
         fig.update_traces(textposition='inside')
 
-        # [✨ 차트 레이아웃 수정 (범례 공간 확보) ✨]
+        # [✨ 차트 레이아웃 수정 (X축 상단 이동) ✨]
         
         chart_height = (len(selected_machines) * 50) + 150 
         
         fig.update_layout(
             height=chart_height,
-            # width=... (width 속성 제거)
-            
             yaxis=dict(
                 tickfont=dict(size=14), 
-                # Y축은 사이드바 필터(selected_machines) 기준으로 고정
                 categoryorder="array",
                 categoryarray=sorted(selected_machines, reverse=True) 
             ),
@@ -352,8 +349,11 @@ def run_app():
                 title_text="스케줄 시간",
                 tickfont=dict(size=12),
                 range=[start_datetime, end_datetime],
-                rangeslider=dict(visible=True) # 하단 스크롤바
+                rangeslider=dict(visible=True), # 하단 스크롤바
+                side='top'                     # <-- X축을 위로 이동
             ),
+             # [추가] X축이 위로 가면서 제목과 겹칠 수 있으니 위쪽 여백(t) 증가
+            margin=dict(l=50, r=250, t=100, b=50), 
             legend=dict(
                 title_text="제품명", 
                 font=dict(size=12)
@@ -361,9 +361,7 @@ def run_app():
             font=dict(
                 family="Malgun Gothic, sans-serif",
                 size=12
-            ),
-            # [추가] 오른쪽 여백(margin)을 늘려 범례 공간 확보
-            margin=dict(l=50, r=250, t=50, b=50) # r 값을 조절 (예: 250px)
+            )
         )
         # --- [수정 완료] ---
         
