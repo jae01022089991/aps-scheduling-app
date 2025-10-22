@@ -9,6 +9,7 @@ import os
 # [1. APS 스케줄링 최적화 엔진 함수]
 # (이 함수는 수정할 필요가 없습니다)
 # -----------------------------------------------------------------
+# ... (이전 코드와 동일) ...
 def solve_job_shop_scheduling(jobs_data, all_machines):
     """
     APS 스케줄링 문제를 풀어 최적의 스케줄을 반환합니다.
@@ -193,30 +194,19 @@ def run_solver(jobs_data, all_machines):
 # [3. Streamlit 웹 애플리케이션 메인 로직]
 # -----------------------------------------------------------------
 
+# [✨ 툴팁 생성을 위한 HTML 포맷 함수 ✨]
+def format_option_with_tooltip(option):
+    """multiselect 옵션을 툴팁이 있는 HTML span으로 포맷합니다."""
+    return f'<span title="{option}">{option}</span>'
+
 def run_app():
 
     # --- 1. 기본 설정 ---
     st.set_page_config(layout="wide")
     st.title("APS 스케줄링 간트 차트 📈 (우선순위 반영)")
 
-    # --- [✨ CSS 스타일 주입 (글자 줄바꿈) ✨] ---
-    st.markdown("""
-    <style>
-    /* multiselect 태그 내부 텍스트 줄바꿈 허용 */
-    div[data-baseweb="tag"] > span {
-        white-space: normal !important;
-        overflow: visible !important;
-        max-width: none !important;
-    }
-    /* multiselect 태그 높이 자동 조절 */
-    div[data-baseweb="tag"] {
-        height: auto !important;
-        margin-bottom: 5px !important; /* 줄바꿈 시 태그 간 간격 */
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    # --- [수정 완료] ---
-
+    # --- [✨ CSS 스타일 주입 코드 제거 ✨] ---
+    # st.markdown("""...""", unsafe_allow_html=True) # <-- 이 부분 삭제
 
     excel_filename = 'pop_data.xlsx'
     try:
@@ -277,27 +267,31 @@ def run_app():
 
     st.sidebar.header("⚙️ 데이터 필터")
 
-    # (연동 필터 1: 부서명 - expander 적용)
+    # --- [✨ 필터 위젯에 format_func 추가 (툴팁 적용) ✨] ---
+
+    # (연동 필터 1: 부서명)
     all_departments = df_raw[COLS_MAP['department']].dropna().unique().tolist()
     with st.sidebar.expander("부서명 필터", expanded=False):
         selected_departments = st.multiselect(
             "부서 선택:",
             options=sorted(all_departments),
             default=all_departments,
+            # format_func=format_option_with_tooltip, # 부서명은 보통 짧아서 툴팁 생략 가능
             label_visibility="collapsed"
         )
 
-    # (연동 필터 2: 제품명 - expander 적용)
+    # (연동 필터 2: 제품명)
     relevant_products = df_raw[df_raw[COLS_MAP['department']].isin(selected_departments)][COLS_MAP['display']].dropna().unique().tolist()
     with st.sidebar.expander("제품명 필터", expanded=False):
         selected_products = st.multiselect(
             "제품 선택:",
             options=sorted(relevant_products),
             default=relevant_products,
+            format_func=format_option_with_tooltip, # <-- 제품명 툴팁 적용
             label_visibility="collapsed"
         )
 
-    # (연동 필터 3: 설비명 - expander 적용)
+    # (연동 필터 3: 설비명)
     relevant_machines = df_raw[
         (df_raw[COLS_MAP['department']].isin(selected_departments)) &
         (df_raw[COLS_MAP['display']].isin(selected_products))
@@ -308,13 +302,15 @@ def run_app():
             "설비 선택:",
             options=sorted(relevant_machines),
             default=relevant_machines,
+            format_func=format_option_with_tooltip, # <-- 설비명 툴팁 적용
             label_visibility="collapsed"
         )
+    # --- [수정 완료] ---
 
     st.sidebar.info(f"총 {len(jobs_data)}개 오더\n\n총 {makespan}시간 소요\n(우선순위 적용됨)")
 
     # --- 4. 간트 차트 생성 및 필터링 ---
-
+    # ... (이하 간트 차트 생성 및 표시 로직은 이전과 동일) ...
     df_results = pd.DataFrame(results)
     df_results['Start_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Start'], unit='h')
     df_results['Finish_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Finish'], unit='h')
