@@ -198,6 +198,8 @@ def load_and_parse_data(excel_path, sheet_name, cols_map):
 
     return jobs_data_parsed, all_machines, df
 
+# @st.cache_data 가 run_solver 위에 있으면 안 됩니다.
+# run_solver 자체를 캐시해야 합니다.
 @st.cache_data
 def run_solver(jobs_data, all_machines):
     """
@@ -236,19 +238,29 @@ def run_app():
         'batch': '제조번호'
     }
 
-    # 오늘 날짜 기준으로 시작 시간 설정
-    today_start = pd.Timestamp.now().floor('D')
-    PROJECT_START_TIME = today_start + pd.Timedelta(hours=8, minutes=30)
+    # --- [✨ 스케줄링 시작 날짜 위젯 추가 ✨] ---
+    st.sidebar.header("🗓️ 스케줄링 기준")
+    # 사용자가 스케줄링을 시작할 날짜 선택 (기본값: 오늘)
+    scheduling_start_date = st.sidebar.date_input(
+        "스케줄링 시작 날짜:",
+        value=datetime.date.today()
+    )
+    # 선택된 날짜의 08:30:00를 스케줄링 기준 시점 (PROJECT_START_TIME)으로 설정
+    PROJECT_START_TIME = pd.to_datetime(scheduling_start_date) + pd.Timedelta(hours=8, minutes=30)
+    # --- [수정 완료] ---
 
 
     # --- 2. 데이터 로드 및 스케줄링 실행 (캐시 활용) ---
+    # (캐시는 데이터 로딩과 솔버 실행 자체에만 적용됩니다)
     try:
+        # load_and_parse_data는 파일 경로만 알면 되고, 시작 날짜는 필요 없음
         jobs_data, all_machines, df_raw = load_and_parse_data(EXCEL_FILE_PATH, EXCEL_SHEET_NAME, COLS_MAP)
 
         if jobs_data is None:
              st.error("스케줄링할 데이터가 없습니다. (엑셀의 '소요시간(H)', '우선순위', '공정' 열 확인)")
              st.stop()
 
+        # run_solver도 시작 날짜와 무관하게 상대적인 시간 계획만 계산
         results, makespan = run_solver(jobs_data, all_machines)
 
         if results is None:
@@ -263,7 +275,7 @@ def run_app():
         st.stop()
 
     # --- 3. UI 위젯 생성 (사이드바) ---
-    st.sidebar.header("🗓️ 뷰 옵션")
+    st.sidebar.header("📊 뷰 옵션") # 헤더 이름 변경
 
     view_days = st.sidebar.number_input(
         "표시할 일 수 (Days):",
@@ -272,10 +284,12 @@ def run_app():
         step=1
     )
 
+    # --- [✨ 조회 시작 날짜 기본값을 '스케줄링 시작 날짜'로 변경 ✨] ---
     start_date = st.sidebar.date_input(
-        "조회 시작 날짜:",
-        value=datetime.date.today() # 기본값 오늘 날짜
+        "차트 조회 시작 날짜:", # 라벨 명확화
+        value=scheduling_start_date # <-- 기본값을 위에서 선택한 날짜로
     )
+    # --- [수정 완료] ---
 
     st.sidebar.header("⚙️ 데이터 필터")
 
@@ -334,16 +348,20 @@ def run_app():
 
     # --- 4. 간트 차트 생성 및 필터링 ---
 
-    df_results = pd.DataFrame(results)
+    df_results = pd.DataFrame(results) # 솔버 결과 (Start/Finish는 0부터 시작하는 시간)
+
+    # [✨ 스케줄 시간 변환 시 사용자가 선택한 PROJECT_START_TIME 사용 ✨]
     df_results['Start_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Start'], unit='h')
     df_results['Finish_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Finish'], unit='h')
+    # --- [수정 완료] ---
 
-    start_datetime = pd.to_datetime(start_date)
-    start_datetime_view = start_datetime.floor('D')
-    end_datetime_view = start_datetime_view + pd.to_timedelta(view_days, unit='d')
+    # 차트 X축 범위 설정
+    start_datetime_chart = pd.to_datetime(start_date) # 사용자가 선택한 조회 시작 날짜
+    start_datetime_view = start_datetime_chart.floor('D') # 조회 시작 날짜 0시
+    end_datetime_view = start_datetime_view + pd.to_timedelta(view_days, unit='d') # 조회 종료 날짜 0시
 
 
-    # (필터링 로직)
+    # (필터링 로직 - df_raw에서 정보 가져와 df_results와 합치기)
     merge_cols = [COLS_MAP['id'], COLS_MAP['department'], COLS_MAP['display'], COLS_MAP['priority'], COLS_MAP['batch']]
     info_map = df_raw[merge_cols].drop_duplicates(subset=[COLS_MAP['id']]).astype({COLS_MAP['id']: str})
 
@@ -387,7 +405,7 @@ def run_app():
 
         fig.update_traces(textposition='inside')
 
-        # [✨ 차트 레이아웃 수정 (구분선 스타일 추가) ✨]
+        # (차트 레이아웃)
         chart_height = (len(selected_machines) * 50) + 150
 
         fig.update_layout(
@@ -400,12 +418,12 @@ def run_app():
             xaxis=dict(
                 title_text="스케줄 시간",
                 tickfont=dict(size=12),
-                range=[start_datetime_view, end_datetime_view],
+                range=[start_datetime_view, end_datetime_view], # 차트 X축 범위
                 rangeslider=dict(visible=True),
                 side='top',
                 tickformat='%y-%m-%d<br>%H:%M',
-                gridcolor='gray', # <-- 구분선 색상
-                gridwidth=1      # <-- 구분선 두께
+                gridcolor='gray',
+                gridwidth=1
             ),
             margin=dict(l=50, r=250, t=100, b=50),
             legend=dict(
@@ -417,7 +435,6 @@ def run_app():
                 size=12
             )
         )
-        # --- [수정 완료] ---
 
         st.plotly_chart(fig, use_container_width=True)
 
