@@ -4,6 +4,7 @@ import plotly.express as px
 from ortools.sat.python import cp_model
 import sys
 import os
+import datetime # 오늘 날짜를 가져오기 위해 import
 
 # -----------------------------------------------------------------
 # [1. APS 스케줄링 최적화 엔진 함수]
@@ -205,7 +206,9 @@ def run_app():
 
     # --- 1. 기본 설정 ---
     st.set_page_config(layout="wide")
-    st.title("APS 스케줄링 간트 차트 📈 (우선순위 반영)")
+    # --- [✨ 제목 수정 ✨] ---
+    st.title("AJUPHARM-APS")
+    # --- [수정 완료] ---
 
     excel_filename = 'pop_data.xlsx'
     try:
@@ -226,7 +229,10 @@ def run_app():
         'priority': '우선순위'
     }
 
-    PROJECT_START_TIME = pd.to_datetime('2025-10-21 09:00:00')
+    # 오늘 날짜 기준으로 시작 시간 설정
+    today_start = pd.Timestamp.now().floor('D')
+    PROJECT_START_TIME = today_start + pd.Timedelta(hours=8, minutes=30)
+
 
     # --- 2. 데이터 로드 및 스케줄링 실행 (캐시 활용) ---
     try:
@@ -261,14 +267,12 @@ def run_app():
 
     start_date = st.sidebar.date_input(
         "조회 시작 날짜:",
-        value=PROJECT_START_TIME.date()
+        value=datetime.date.today() # 기본값 오늘 날짜
     )
 
     st.sidebar.header("⚙️ 데이터 필터")
 
-    # --- [✨ 필터 순서 변경 및 오더번호 필터 추가 ✨] ---
-
-    # (필터 1: 부서명)
+    # (연동 필터 1: 부서명)
     all_departments = df_raw[COLS_MAP['department']].dropna().unique().tolist()
     with st.sidebar.expander("부서명 필터", expanded=False):
         selected_departments = st.multiselect(
@@ -278,7 +282,7 @@ def run_app():
             label_visibility="collapsed"
         )
 
-    # (필터 2: 제품명 - 연동)
+    # (연동 필터 2: 제품명)
     relevant_products = df_raw[df_raw[COLS_MAP['department']].isin(selected_departments)][COLS_MAP['display']].dropna().unique().tolist()
     with st.sidebar.expander("제품명 필터", expanded=False):
         selected_products = st.multiselect(
@@ -288,30 +292,27 @@ def run_app():
             label_visibility="collapsed"
         )
 
-    # (필터 3: 오더번호 - 연동)
-    # 선택된 부서/제품에 해당하는 오더번호 목록 추출
+    # (연동 필터 3: 오더번호)
     relevant_orders = df_raw[
         (df_raw[COLS_MAP['department']].isin(selected_departments)) &
         (df_raw[COLS_MAP['display']].isin(selected_products))
     ][COLS_MAP['id']].dropna().unique().tolist()
-    # 오더번호는 문자열로 변환하여 사용 (결과 데이터와 타입 일치)
     relevant_orders_str = sorted([str(o) for o in relevant_orders])
 
     with st.sidebar.expander("오더번호 필터", expanded=False):
         selected_orders = st.multiselect(
             "오더 선택:",
             options=relevant_orders_str,
-            default=relevant_orders_str, # 기본값: 연관 오더 모두 선택
+            default=relevant_orders_str,
             label_visibility="collapsed"
         )
 
 
-    # (필터 4: 설비명 - 연동)
-    # 선택된 부서/제품/오더에 해당하는 설비 목록 추출
+    # (연동 필터 4: 설비명)
     relevant_machines = df_raw[
         (df_raw[COLS_MAP['department']].isin(selected_departments)) &
         (df_raw[COLS_MAP['display']].isin(selected_products)) &
-        (df_raw[COLS_MAP['id']].astype(str).isin(selected_orders)) # 오더번호 필터 조건 추가
+        (df_raw[COLS_MAP['id']].astype(str).isin(selected_orders))
     ][COLS_MAP['machine']].dropna().unique().tolist()
 
     with st.sidebar.expander("설비 필터", expanded=False):
@@ -321,7 +322,6 @@ def run_app():
             default=relevant_machines,
             label_visibility="collapsed"
         )
-    # --- [수정 완료] ---
 
     st.sidebar.info(f"총 {len(jobs_data)}개 오더\n\n총 {makespan}시간 소요\n(우선순위 적용됨)")
 
@@ -332,39 +332,35 @@ def run_app():
     df_results['Finish_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Finish'], unit='h')
 
     start_datetime = pd.to_datetime(start_date)
-    end_datetime = start_datetime + pd.to_timedelta(view_days, unit='d')
+    start_datetime_view = start_datetime.floor('D')
+    end_datetime_view = start_datetime_view + pd.to_timedelta(view_days, unit='d')
 
-    # [✨ 필터링을 위해 스케줄 결과(df_results)에 원본 정보(df_raw) Merge ✨]
-    # (Merge 로직은 이전과 동일, df_raw에서 필요한 정보 가져옴)
+
+    # (필터링 로직)
     merge_cols = [COLS_MAP['id'], COLS_MAP['department'], COLS_MAP['display'], COLS_MAP['priority']]
-    # id 열을 문자열로 변환하여 merge 준비
     info_map = df_raw[merge_cols].drop_duplicates(subset=[COLS_MAP['id']]).astype({COLS_MAP['id']: str})
 
 
     df_results_with_info = pd.merge(
-        df_results, # df_results['Job']은 이미 문자열 타입 오더번호
+        df_results,
         info_map,
         left_on='Job',
         right_on=COLS_MAP['id'],
         how='left'
     )
 
-    # [✨ 4개 필터 모두 적용 ✨]
     df_filtered = df_results_with_info[
         (df_results_with_info['Machine'].isin(selected_machines)) &
         (df_results_with_info[COLS_MAP['department']].isin(selected_departments)) &
         (df_results_with_info[COLS_MAP['display']].isin(selected_products)) &
-        (df_results_with_info['Job'].isin(selected_orders)) # 오더번호 필터 조건 추가
+        (df_results_with_info['Job'].isin(selected_orders))
     ]
 
     if df_filtered.empty:
         st.warning("선택한 필터에 해당하는 데이터가 없습니다.")
     else:
-        # [✨ Y축 정렬 로직 수정 ✨]
-        # 1. 원본 데이터에서 설비별 '최소 공정 번호' 계산
+        # (Y축 정렬 로직)
         min_step_by_machine = df_raw.groupby(COLS_MAP['machine'])[COLS_MAP['step']].min().fillna(9999)
-
-        # 2. '선택된 설비 리스트'(selected_machines)를 '최소 공정 번호' 오름차순으로 정렬
         sorted_selected_machines = sorted(
             selected_machines,
             key=lambda machine: min_step_by_machine.get(machine, 9999)
@@ -378,7 +374,7 @@ def run_app():
             y="Machine",
             color="Task", # 범례: 제품명
             text="Job",  # 막대 텍스트: 오더번호
-            title=f"APS 스케줄링 결과 (총 {makespan}시간)",
+            title=f"APS 스케줄링 결과 (총 {makespan}시간)", # 차트 제목은 유지
             hover_data=[COLS_MAP['priority']]
         )
 
@@ -391,14 +387,13 @@ def run_app():
             height=chart_height,
             yaxis=dict(
                 tickfont=dict(size=14),
-                # Y축은 사이드바 필터(정렬된 selected_machines) 기준으로 고정
                 categoryorder="array",
                 categoryarray=sorted_selected_machines[::-1] # 오름차순으로 보이게 역순
             ),
             xaxis=dict(
                 title_text="스케줄 시간",
                 tickfont=dict(size=12),
-                range=[start_datetime, end_datetime],
+                range=[start_datetime_view, end_datetime_view],
                 rangeslider=dict(visible=True),
                 side='top',
                 tickformat='%y-%m-%d<br>%H:%M'
