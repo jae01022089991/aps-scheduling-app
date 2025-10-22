@@ -99,7 +99,7 @@ def solve_job_shop_scheduling(jobs_data, all_machines):
     print(f"--- 우선순위 가중치 강화 (P1^3) 스케줄링 활성화 ---")
 
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 60.0 # <-- 시간제한 60초로 복구
+    solver.parameters.max_time_in_seconds = 60.0 # <-- 시간제한 60초
     print(f"--- 솔버 시간제한 60초 설정 ---")
 
     status = solver.Solve(model)
@@ -153,7 +153,6 @@ def load_and_parse_data(excel_path, sheet_name, cols_map):
     except ValueError:
         raise ValueError(f"'{cols_map['priority']}' 열에 숫자가 아닌 값이 포함되어 있습니다.")
 
-    # [✨ 추가 ✨] '공정' 열도 숫자로 변환 시도 (정렬 위해)
     try:
         df[cols_map['step']] = pd.to_numeric(df[cols_map['step']], errors='coerce')
         df = df.dropna(subset=[cols_map['step']]) # 숫자로 변환 안되면 제거
@@ -184,7 +183,7 @@ def load_and_parse_data(excel_path, sheet_name, cols_map):
                 'display_name': display_name,
                 'priority': first_priority
             })
-        jobs_data_parsed[str(job_name)] = tasks_list
+        jobs_data_parsed[str(job_name)] = tasks_list # 오더번호를 문자열 키로 사용
 
     all_machines = df[cols_map['machine']].dropna().unique().tolist()
 
@@ -267,7 +266,9 @@ def run_app():
 
     st.sidebar.header("⚙️ 데이터 필터")
 
-    # (연동 필터 1: 부서명)
+    # --- [✨ 필터 순서 변경 및 오더번호 필터 추가 ✨] ---
+
+    # (필터 1: 부서명)
     all_departments = df_raw[COLS_MAP['department']].dropna().unique().tolist()
     with st.sidebar.expander("부서명 필터", expanded=False):
         selected_departments = st.multiselect(
@@ -277,7 +278,7 @@ def run_app():
             label_visibility="collapsed"
         )
 
-    # (연동 필터 2: 제품명)
+    # (필터 2: 제품명 - 연동)
     relevant_products = df_raw[df_raw[COLS_MAP['department']].isin(selected_departments)][COLS_MAP['display']].dropna().unique().tolist()
     with st.sidebar.expander("제품명 필터", expanded=False):
         selected_products = st.multiselect(
@@ -287,10 +288,30 @@ def run_app():
             label_visibility="collapsed"
         )
 
-    # (연동 필터 3: 설비명)
-    relevant_machines = df_raw[
+    # (필터 3: 오더번호 - 연동)
+    # 선택된 부서/제품에 해당하는 오더번호 목록 추출
+    relevant_orders = df_raw[
         (df_raw[COLS_MAP['department']].isin(selected_departments)) &
         (df_raw[COLS_MAP['display']].isin(selected_products))
+    ][COLS_MAP['id']].dropna().unique().tolist()
+    # 오더번호는 문자열로 변환하여 사용 (결과 데이터와 타입 일치)
+    relevant_orders_str = sorted([str(o) for o in relevant_orders])
+
+    with st.sidebar.expander("오더번호 필터", expanded=False):
+        selected_orders = st.multiselect(
+            "오더 선택:",
+            options=relevant_orders_str,
+            default=relevant_orders_str, # 기본값: 연관 오더 모두 선택
+            label_visibility="collapsed"
+        )
+
+
+    # (필터 4: 설비명 - 연동)
+    # 선택된 부서/제품/오더에 해당하는 설비 목록 추출
+    relevant_machines = df_raw[
+        (df_raw[COLS_MAP['department']].isin(selected_departments)) &
+        (df_raw[COLS_MAP['display']].isin(selected_products)) &
+        (df_raw[COLS_MAP['id']].astype(str).isin(selected_orders)) # 오더번호 필터 조건 추가
     ][COLS_MAP['machine']].dropna().unique().tolist()
 
     with st.sidebar.expander("설비 필터", expanded=False):
@@ -300,6 +321,7 @@ def run_app():
             default=relevant_machines,
             label_visibility="collapsed"
         )
+    # --- [수정 완료] ---
 
     st.sidebar.info(f"총 {len(jobs_data)}개 오더\n\n총 {makespan}시간 소요\n(우선순위 적용됨)")
 
@@ -312,42 +334,41 @@ def run_app():
     start_datetime = pd.to_datetime(start_date)
     end_datetime = start_datetime + pd.to_timedelta(view_days, unit='d')
 
-    # (필터링 로직)
+    # [✨ 필터링을 위해 스케줄 결과(df_results)에 원본 정보(df_raw) Merge ✨]
+    # (Merge 로직은 이전과 동일, df_raw에서 필요한 정보 가져옴)
     merge_cols = [COLS_MAP['id'], COLS_MAP['department'], COLS_MAP['display'], COLS_MAP['priority']]
-    info_map = df_raw[merge_cols].drop_duplicates(subset=[COLS_MAP['id']])
+    # id 열을 문자열로 변환하여 merge 준비
+    info_map = df_raw[merge_cols].drop_duplicates(subset=[COLS_MAP['id']]).astype({COLS_MAP['id']: str})
 
-    info_map[COLS_MAP['id']] = info_map[COLS_MAP['id']].astype(str)
 
     df_results_with_info = pd.merge(
-        df_results,
+        df_results, # df_results['Job']은 이미 문자열 타입 오더번호
         info_map,
         left_on='Job',
         right_on=COLS_MAP['id'],
         how='left'
     )
 
+    # [✨ 4개 필터 모두 적용 ✨]
     df_filtered = df_results_with_info[
         (df_results_with_info['Machine'].isin(selected_machines)) &
         (df_results_with_info[COLS_MAP['department']].isin(selected_departments)) &
-        (df_results_with_info[COLS_MAP['display']].isin(selected_products))
+        (df_results_with_info[COLS_MAP['display']].isin(selected_products)) &
+        (df_results_with_info['Job'].isin(selected_orders)) # 오더번호 필터 조건 추가
     ]
 
     if df_filtered.empty:
         st.warning("선택한 필터에 해당하는 데이터가 없습니다.")
     else:
-        # --- [✨ Y축 정렬 로직 추가 ✨] ---
+        # [✨ Y축 정렬 로직 수정 ✨]
         # 1. 원본 데이터에서 설비별 '최소 공정 번호' 계산
-        #    (NaN 값은 큰 값으로 처리하여 맨 뒤로 보내기)
         min_step_by_machine = df_raw.groupby(COLS_MAP['machine'])[COLS_MAP['step']].min().fillna(9999)
 
-        # 2. 사이드바에서 '선택된 설비 리스트'(selected_machines)를
-        #    '최소 공정 번호' 오름차순으로 정렬
+        # 2. '선택된 설비 리스트'(selected_machines)를 '최소 공정 번호' 오름차순으로 정렬
         sorted_selected_machines = sorted(
             selected_machines,
-            key=lambda machine: min_step_by_machine.get(machine, 9999) # 없는 설비는 맨 뒤로
+            key=lambda machine: min_step_by_machine.get(machine, 9999)
         )
-        # --- [정렬 로직 추가 완료] ---
-
 
         # 4-2. 간트 차트 생성
         fig = px.timeline(
@@ -370,9 +391,9 @@ def run_app():
             height=chart_height,
             yaxis=dict(
                 tickfont=dict(size=14),
-                # [✨ 수정 ✨] categoryarray에 '정렬된' 설비 리스트 사용
+                # Y축은 사이드바 필터(정렬된 selected_machines) 기준으로 고정
                 categoryorder="array",
-                categoryarray=sorted_selected_machines[::-1] # 내림차순(숫자 작은게 위) 대신 오름차순(숫자 작은게 위)으로 보이게 역순([::-1]) 적용
+                categoryarray=sorted_selected_machines[::-1] # 오름차순으로 보이게 역순
             ),
             xaxis=dict(
                 title_text="스케줄 시간",
