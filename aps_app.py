@@ -8,7 +8,7 @@ import datetime # 오늘 날짜를 가져오기 위해 import
 
 # -----------------------------------------------------------------
 # [1. APS 스케줄링 최적화 엔진 함수]
-# (이 함수는 수정할 필요가 없습니다)
+# (시간제한 10초로 수정됨)
 # -----------------------------------------------------------------
 def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # project_start_time 추가
     """
@@ -133,8 +133,10 @@ def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # pr
     # print(f"--- 우선순위 가중치 강화 (P1^3) 및 주말 제외 스케줄링 활성화 ---") # 로그 제거
 
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 60.0 # <-- 시간제한 60초
-    # print(f"--- 솔버 시간제한 60초 설정 ---") # 로그 제거
+    # --- [✨ 시간제한 10초로 수정 ✨] ---
+    solver.parameters.max_time_in_seconds = 10.0
+    print(f"--- 솔버 시간제한 10초 설정 (테스트용) ---")
+    # --- [수정 완료] ---
 
     status = solver.Solve(model)
 
@@ -440,9 +442,9 @@ def run_app():
             hover_data=[COLS_MAP['priority'], COLS_MAP['batch']]
         )
 
-        # --- [✨ 텍스트 폰트 설정 수정 (오류 수정) ✨] ---
-        # textfont_size 대신 textfont=dict(size=...) 사용
-        fig.update_traces(textposition='middle center', textfont=dict(size=10))
+        # --- [✨ fig.update_traces 제거 ✨] ---
+        # (이전 오류 발생 지점 제거)
+        # fig.update_traces(textposition='middle center', textfont=dict(size=10))
         # --- [수정 완료] ---
 
         # (막대 늘어남 방지 및 날짜/시간 형식, 구분선)
@@ -473,7 +475,11 @@ def run_app():
             font=dict(
                 family="Malgun Gothic, sans-serif",
                 size=12
-            )
+            ),
+            # --- [✨ 레이아웃에서 텍스트 스타일 조정 (대안) ✨] ---
+            # 모든 타임라인 텍스트에 적용 (크기 조절 제한적)
+            uniformtext_minsize=8, # 최소 폰트 크기
+            uniformtext_mode='hide'  # 공간 부족 시 텍스트 숨김
         )
 
         st.plotly_chart(fig, use_container_width=True)
