@@ -258,21 +258,27 @@ def run_app():
 
     st.sidebar.header("⚙️ 데이터 필터")
 
+    # --- [✨ 필터 위젯을 st.expander로 감싸기 ✨] ---
+
     # (연동 필터 1: 부서명)
     all_departments = df_raw[COLS_MAP['department']].dropna().unique().tolist()
-    selected_departments = st.sidebar.multiselect(
-        "부서명 필터:",
-        options=sorted(all_departments),
-        default=all_departments
-    )
+    with st.sidebar.expander("부서명 필터", expanded=False): # expanded=False: 기본적으로 닫혀있음
+        selected_departments = st.multiselect(
+            "부서 선택:", # Label 변경 (선택사항)
+            options=sorted(all_departments),
+            default=all_departments,
+            label_visibility="collapsed" # 상위 라벨과 중복되므로 숨김
+        )
 
     # (연동 필터 2: 제품명)
     relevant_products = df_raw[df_raw[COLS_MAP['department']].isin(selected_departments)][COLS_MAP['display']].dropna().unique().tolist()
-    selected_products = st.sidebar.multiselect(
-        "제품명 필터:",
-        options=sorted(relevant_products),
-        default=relevant_products
-    )
+    with st.sidebar.expander("제품명 필터", expanded=False):
+        selected_products = st.multiselect(
+            "제품 선택:",
+            options=sorted(relevant_products),
+            default=relevant_products,
+            label_visibility="collapsed"
+        )
 
     # (연동 필터 3: 설비명)
     relevant_machines = df_raw[
@@ -280,11 +286,14 @@ def run_app():
         (df_raw[COLS_MAP['display']].isin(selected_products))
     ][COLS_MAP['machine']].dropna().unique().tolist()
 
-    selected_machines = st.sidebar.multiselect(
-        "설비 필터:",
-        options=sorted(relevant_machines),
-        default=relevant_machines
-    )
+    with st.sidebar.expander("설비 필터", expanded=False):
+        selected_machines = st.multiselect(
+            "설비 선택:",
+            options=sorted(relevant_machines),
+            default=relevant_machines,
+            label_visibility="collapsed"
+        )
+    # --- [수정 완료] ---
 
     st.sidebar.info(f"총 {len(jobs_data)}개 오더\n\n총 {makespan}시간 소요\n(우선순위 적용됨)")
 
@@ -334,8 +343,7 @@ def run_app():
 
         fig.update_traces(textposition='inside')
 
-        # [✨ 차트 레이아웃 수정 (날짜 + 시간 형식) ✨]
-
+        # (막대 늘어남 방지 및 날짜 형식/위치)
         chart_height = (len(selected_machines) * 50) + 150
 
         fig.update_layout(
@@ -351,7 +359,7 @@ def run_app():
                 range=[start_datetime, end_datetime],
                 rangeslider=dict(visible=True),
                 side='top',
-                tickformat='%y-%m-%d<br>%H:%M' # <-- 날짜 + 시간 형식
+                tickformat='%y-%m-%d<br>%H:%M'
             ),
             margin=dict(l=50, r=250, t=100, b=50),
             legend=dict(
@@ -363,7 +371,6 @@ def run_app():
                 size=12
             )
         )
-        # --- [수정 완료] ---
 
         st.plotly_chart(fig, use_container_width=True)
 
