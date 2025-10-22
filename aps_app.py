@@ -199,6 +199,25 @@ def run_app():
     st.set_page_config(layout="wide")
     st.title("APS 스케줄링 간트 차트 📈 (우선순위 반영)")
 
+    # --- [✨ CSS 스타일 주입 (글자 줄바꿈) ✨] ---
+    st.markdown("""
+    <style>
+    /* multiselect 태그 내부 텍스트 줄바꿈 허용 */
+    div[data-baseweb="tag"] > span {
+        white-space: normal !important;
+        overflow: visible !important;
+        max-width: none !important;
+    }
+    /* multiselect 태그 높이 자동 조절 */
+    div[data-baseweb="tag"] {
+        height: auto !important;
+        margin-bottom: 5px !important; /* 줄바꿈 시 태그 간 간격 */
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    # --- [수정 완료] ---
+
+
     excel_filename = 'pop_data.xlsx'
     try:
         script_directory = os.path.dirname(os.path.abspath(__file__))
@@ -258,19 +277,17 @@ def run_app():
 
     st.sidebar.header("⚙️ 데이터 필터")
 
-    # --- [✨ 필터 위젯을 st.expander로 감싸기 ✨] ---
-
-    # (연동 필터 1: 부서명)
+    # (연동 필터 1: 부서명 - expander 적용)
     all_departments = df_raw[COLS_MAP['department']].dropna().unique().tolist()
-    with st.sidebar.expander("부서명 필터", expanded=False): # expanded=False: 기본적으로 닫혀있음
+    with st.sidebar.expander("부서명 필터", expanded=False):
         selected_departments = st.multiselect(
-            "부서 선택:", # Label 변경 (선택사항)
+            "부서 선택:",
             options=sorted(all_departments),
             default=all_departments,
-            label_visibility="collapsed" # 상위 라벨과 중복되므로 숨김
+            label_visibility="collapsed"
         )
 
-    # (연동 필터 2: 제품명)
+    # (연동 필터 2: 제품명 - expander 적용)
     relevant_products = df_raw[df_raw[COLS_MAP['department']].isin(selected_departments)][COLS_MAP['display']].dropna().unique().tolist()
     with st.sidebar.expander("제품명 필터", expanded=False):
         selected_products = st.multiselect(
@@ -280,7 +297,7 @@ def run_app():
             label_visibility="collapsed"
         )
 
-    # (연동 필터 3: 설비명)
+    # (연동 필터 3: 설비명 - expander 적용)
     relevant_machines = df_raw[
         (df_raw[COLS_MAP['department']].isin(selected_departments)) &
         (df_raw[COLS_MAP['display']].isin(selected_products))
@@ -293,7 +310,6 @@ def run_app():
             default=relevant_machines,
             label_visibility="collapsed"
         )
-    # --- [수정 완료] ---
 
     st.sidebar.info(f"총 {len(jobs_data)}개 오더\n\n총 {makespan}시간 소요\n(우선순위 적용됨)")
 
@@ -343,7 +359,7 @@ def run_app():
 
         fig.update_traces(textposition='inside')
 
-        # (막대 늘어남 방지 및 날짜 형식/위치)
+        # (막대 늘어남 방지 및 날짜/시간 형식)
         chart_height = (len(selected_machines) * 50) + 150
 
         fig.update_layout(
