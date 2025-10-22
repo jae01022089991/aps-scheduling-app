@@ -8,7 +8,7 @@ import datetime # 오늘 날짜를 가져오기 위해 import
 
 # -----------------------------------------------------------------
 # [1. APS 스케줄링 최적화 엔진 함수]
-# (이 함수는 수정할 필요가 없습니다)
+# (bar_text 생성 부분 수정됨)
 # -----------------------------------------------------------------
 def solve_job_shop_scheduling(jobs_data, all_machines):
     """
@@ -115,8 +115,10 @@ def solve_job_shop_scheduling(jobs_data, all_machines):
                 start_time = solver.Value(task['start'])
                 end_time = solver.Value(task['end'])
 
-                # 막대 텍스트 조합
-                bar_text = f"{job_name}/{task['task_name_disp']}/{task['batch_no']}"
+                # --- [✨ 막대 텍스트 조합 (줄 바꿈 적용) ✨] ---
+                # '/' 대신 HTML 줄바꿈 태그 '<br>' 사용
+                bar_text = f"{job_name}<br>{task['task_name_disp']}<br>{task['batch_no']}"
+                # --- [수정 완료] ---
 
                 schedule_results.append(dict(
                     Job=job_name, # 오더번호
@@ -126,7 +128,7 @@ def solve_job_shop_scheduling(jobs_data, all_machines):
                     Duration=task['duration'],
                     Task=task['task_name_disp'], # 제품명
                     BatchNo=task['batch_no'], # 제조번호
-                    BarText=bar_text # 조합된 텍스트
+                    BarText=bar_text # 조합된 텍스트 (줄바꿈 포함)
                 ))
         return schedule_results, solver.Value(makespan)
     else:
@@ -178,7 +180,9 @@ def load_and_parse_data(excel_path, sheet_name, cols_map):
         tasks_list = []
 
         first_priority = int(group_df.iloc[0][cols_map['priority']])
-        first_batch_no = str(group_df.iloc[0][cols_map['batch']])
+        # 제조번호가 비어있을 경우 대비 (fillna('') 추가)
+        first_batch_no = str(group_df.iloc[0][cols_map['batch']]) if not pd.isna(group_df.iloc[0][cols_map['batch']]) else ''
+
 
         for index, row in group_df.iterrows():
             display_name = row.get(cols_map['display'])
@@ -198,8 +202,6 @@ def load_and_parse_data(excel_path, sheet_name, cols_map):
 
     return jobs_data_parsed, all_machines, df
 
-# @st.cache_data 가 run_solver 위에 있으면 안 됩니다.
-# run_solver 자체를 캐시해야 합니다.
 @st.cache_data
 def run_solver(jobs_data, all_machines):
     """
@@ -216,7 +218,25 @@ def run_app():
 
     # --- 1. 기본 설정 ---
     st.set_page_config(layout="wide")
-    st.title("AJUPHARM-APS")
+    col1, col2 = st.columns([1, 5])
+    try:
+        logo_filename = 'logo.png'
+        script_directory = os.path.dirname(os.path.abspath(__file__))
+        logo_path = os.path.join(script_directory, logo_filename)
+        col1.image(logo_path, width=70)
+    except NameError:
+         try:
+             logo_filename = 'logo.png'
+             logo_path = os.path.join(os.getcwd(), logo_filename)
+             col1.image(logo_path, width=70)
+         except Exception as e:
+            col1.write("")
+            print(f"로고 로드 실패: {e}")
+    except Exception as e:
+        col1.write("")
+        print(f"로고 로드 실패: {e}")
+    col2.title("AJUPHARM-APS")
+
 
     excel_filename = 'pop_data.xlsx'
     try:
@@ -238,29 +258,19 @@ def run_app():
         'batch': '제조번호'
     }
 
-    # --- [✨ 스케줄링 시작 날짜 위젯 추가 ✨] ---
-    st.sidebar.header("🗓️ 스케줄링 기준")
-    # 사용자가 스케줄링을 시작할 날짜 선택 (기본값: 오늘)
-    scheduling_start_date = st.sidebar.date_input(
-        "스케줄링 시작 날짜:",
-        value=datetime.date.today()
-    )
-    # 선택된 날짜의 08:30:00를 스케줄링 기준 시점 (PROJECT_START_TIME)으로 설정
-    PROJECT_START_TIME = pd.to_datetime(scheduling_start_date) + pd.Timedelta(hours=8, minutes=30)
-    # --- [수정 완료] ---
+    # 오늘 날짜 기준으로 시작 시간 설정
+    today_start = pd.Timestamp.now().floor('D')
+    PROJECT_START_TIME = today_start + pd.Timedelta(hours=8, minutes=30)
 
 
     # --- 2. 데이터 로드 및 스케줄링 실행 (캐시 활용) ---
-    # (캐시는 데이터 로딩과 솔버 실행 자체에만 적용됩니다)
     try:
-        # load_and_parse_data는 파일 경로만 알면 되고, 시작 날짜는 필요 없음
         jobs_data, all_machines, df_raw = load_and_parse_data(EXCEL_FILE_PATH, EXCEL_SHEET_NAME, COLS_MAP)
 
         if jobs_data is None:
              st.error("스케줄링할 데이터가 없습니다. (엑셀의 '소요시간(H)', '우선순위', '공정' 열 확인)")
              st.stop()
 
-        # run_solver도 시작 날짜와 무관하게 상대적인 시간 계획만 계산
         results, makespan = run_solver(jobs_data, all_machines)
 
         if results is None:
@@ -275,21 +285,25 @@ def run_app():
         st.stop()
 
     # --- 3. UI 위젯 생성 (사이드바) ---
-    st.sidebar.header("📊 뷰 옵션") # 헤더 이름 변경
+    st.sidebar.header("🗓️ 스케줄링 기준")
+    scheduling_start_date = st.sidebar.date_input(
+        "스케줄링 시작 날짜:",
+        value=datetime.date.today()
+    )
+    PROJECT_START_TIME = pd.to_datetime(scheduling_start_date) + pd.Timedelta(hours=8, minutes=30)
 
+
+    st.sidebar.header("📊 뷰 옵션")
     view_days = st.sidebar.number_input(
         "표시할 일 수 (Days):",
         min_value=1,
-        value=3,
+        value=5, # 기본 5일
         step=1
     )
-
-    # --- [✨ 조회 시작 날짜 기본값을 '스케줄링 시작 날짜'로 변경 ✨] ---
     start_date = st.sidebar.date_input(
-        "차트 조회 시작 날짜:", # 라벨 명확화
-        value=scheduling_start_date # <-- 기본값을 위에서 선택한 날짜로
+        "차트 조회 시작 날짜:",
+        value=scheduling_start_date # 기본값을 스케줄링 시작 날짜로
     )
-    # --- [수정 완료] ---
 
     st.sidebar.header("⚙️ 데이터 필터")
 
@@ -348,21 +362,20 @@ def run_app():
 
     # --- 4. 간트 차트 생성 및 필터링 ---
 
-    df_results = pd.DataFrame(results) # 솔버 결과 (Start/Finish는 0부터 시작하는 시간)
-
-    # [✨ 스케줄 시간 변환 시 사용자가 선택한 PROJECT_START_TIME 사용 ✨]
+    df_results = pd.DataFrame(results) # 'BarText' 포함됨
     df_results['Start_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Start'], unit='h')
     df_results['Finish_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Finish'], unit='h')
-    # --- [수정 완료] ---
 
-    # 차트 X축 범위 설정
-    start_datetime_chart = pd.to_datetime(start_date) # 사용자가 선택한 조회 시작 날짜
-    start_datetime_view = start_datetime_chart.floor('D') # 조회 시작 날짜 0시
-    end_datetime_view = start_datetime_view + pd.to_timedelta(view_days, unit='d') # 조회 종료 날짜 0시
+    # 차트 X축 범위
+    start_datetime_chart = pd.to_datetime(start_date)
+    start_datetime_view = start_datetime_chart.floor('D')
+    end_datetime_view = start_datetime_view + pd.to_timedelta(view_days, unit='d')
 
 
-    # (필터링 로직 - df_raw에서 정보 가져와 df_results와 합치기)
+    # (필터링 로직)
+    # [✨ Merge 정보에 '제조번호' 추가 확인 ✨]
     merge_cols = [COLS_MAP['id'], COLS_MAP['department'], COLS_MAP['display'], COLS_MAP['priority'], COLS_MAP['batch']]
+    # id 열을 문자열로 변환하여 merge 준비
     info_map = df_raw[merge_cols].drop_duplicates(subset=[COLS_MAP['id']]).astype({COLS_MAP['id']: str})
 
 
@@ -398,14 +411,14 @@ def run_app():
             x_end="Finish_dt",
             y="Machine",
             color="Task", # 범례: 제품명
-            text="BarText",  # 막대 텍스트: 조합된 텍스트
+            text="BarText",  # <-- [✨ 막대 텍스트를 줄바꿈 포함된 BarText로 ✨]
             title=f"APS 스케줄링 결과 (총 {makespan}시간)",
             hover_data=[COLS_MAP['priority'], COLS_MAP['batch']]
         )
 
         fig.update_traces(textposition='inside')
 
-        # (차트 레이아웃)
+        # (막대 늘어남 방지 및 날짜/시간 형식, 구분선)
         chart_height = (len(selected_machines) * 50) + 150
 
         fig.update_layout(
@@ -418,7 +431,7 @@ def run_app():
             xaxis=dict(
                 title_text="스케줄 시간",
                 tickfont=dict(size=12),
-                range=[start_datetime_view, end_datetime_view], # 차트 X축 범위
+                range=[start_datetime_view, end_datetime_view],
                 rangeslider=dict(visible=True),
                 side='top',
                 tickformat='%y-%m-%d<br>%H:%M',
@@ -441,7 +454,13 @@ def run_app():
 
     # --- 5. 상세 데이터 테이블 표시 ---
     with st.expander("필터링된 스케줄링 상세 데이터 보기 ('우선순위', '제조번호' 포함)"):
-        st.dataframe(df_filtered)
+        # 필요한 열만 선택하여 보여주기
+        display_cols = ['Job', 'Task', 'BatchNo', COLS_MAP['priority'], 'Machine', 'Start_dt', 'Finish_dt', 'Duration']
+        df_display = df_filtered[display_cols].copy()
+        df_display['Start_dt'] = df_display['Start_dt'].dt.strftime('%Y-%m-%d %H:%M')
+        df_display['Finish_dt'] = df_display['Finish_dt'].dt.strftime('%Y-%m-%d %H:%M')
+        st.dataframe(df_display)
+
 
     with st.expander("원본 엑셀 데이터 보기 (정리 후)"):
         st.dataframe(df_raw)
