@@ -9,7 +9,6 @@ import os
 # [1. APS 스케줄링 최적화 엔진 함수]
 # (이 함수는 수정할 필요가 없습니다)
 # -----------------------------------------------------------------
-# ... (이전 코드와 동일) ...
 def solve_job_shop_scheduling(jobs_data, all_machines):
     """
     APS 스케줄링 문제를 풀어 최적의 스케줄을 반환합니다.
@@ -194,10 +193,8 @@ def run_solver(jobs_data, all_machines):
 # [3. Streamlit 웹 애플리케이션 메인 로직]
 # -----------------------------------------------------------------
 
-# [✨ 툴팁 생성을 위한 HTML 포맷 함수 ✨]
-def format_option_with_tooltip(option):
-    """multiselect 옵션을 툴팁이 있는 HTML span으로 포맷합니다."""
-    return f'<span title="{option}">{option}</span>'
+# [✨ 툴팁 함수 제거 ✨]
+# def format_option_with_tooltip(option): ... (이 함수 삭제)
 
 def run_app():
 
@@ -205,8 +202,8 @@ def run_app():
     st.set_page_config(layout="wide")
     st.title("APS 스케줄링 간트 차트 📈 (우선순위 반영)")
 
-    # --- [✨ CSS 스타일 주입 코드 제거 ✨] ---
-    # st.markdown("""...""", unsafe_allow_html=True) # <-- 이 부분 삭제
+    # [✨ CSS 스타일 주입 코드 제거 ✨]
+    # st.markdown("""...""", unsafe_allow_html=True) # <-- 이 부분 삭제됨
 
     excel_filename = 'pop_data.xlsx'
     try:
@@ -267,7 +264,7 @@ def run_app():
 
     st.sidebar.header("⚙️ 데이터 필터")
 
-    # --- [✨ 필터 위젯에 format_func 추가 (툴팁 적용) ✨] ---
+    # --- [✨ 필터 위젯 format_func 제거 ✨] ---
 
     # (연동 필터 1: 부서명)
     all_departments = df_raw[COLS_MAP['department']].dropna().unique().tolist()
@@ -276,7 +273,7 @@ def run_app():
             "부서 선택:",
             options=sorted(all_departments),
             default=all_departments,
-            # format_func=format_option_with_tooltip, # 부서명은 보통 짧아서 툴팁 생략 가능
+            # format_func=format_option_with_tooltip, # <-- 제거
             label_visibility="collapsed"
         )
 
@@ -287,7 +284,7 @@ def run_app():
             "제품 선택:",
             options=sorted(relevant_products),
             default=relevant_products,
-            format_func=format_option_with_tooltip, # <-- 제품명 툴팁 적용
+            # format_func=format_option_with_tooltip, # <-- 제거
             label_visibility="collapsed"
         )
 
@@ -302,7 +299,7 @@ def run_app():
             "설비 선택:",
             options=sorted(relevant_machines),
             default=relevant_machines,
-            format_func=format_option_with_tooltip, # <-- 설비명 툴팁 적용
+            # format_func=format_option_with_tooltip, # <-- 제거
             label_visibility="collapsed"
         )
     # --- [수정 완료] ---
