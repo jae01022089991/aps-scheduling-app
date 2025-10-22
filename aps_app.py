@@ -8,7 +8,7 @@ import datetime # 오늘 날짜를 가져오기 위해 import
 
 # -----------------------------------------------------------------
 # [1. APS 스케줄링 최적화 엔진 함수]
-# (bar_text 생성 부분 수정됨)
+# (bar_text 생성 부분 '\n'으로 수정됨)
 # -----------------------------------------------------------------
 def solve_job_shop_scheduling(jobs_data, all_machines):
     """
@@ -115,9 +115,9 @@ def solve_job_shop_scheduling(jobs_data, all_machines):
                 start_time = solver.Value(task['start'])
                 end_time = solver.Value(task['end'])
 
-                # --- [✨ 막대 텍스트 조합 (줄 바꿈 적용) ✨] ---
-                # '/' 대신 HTML 줄바꿈 태그 '<br>' 사용
-                bar_text = f"{job_name}<br>{task['task_name_disp']}<br>{task['batch_no']}"
+                # --- [✨ 막대 텍스트 조합 ('\n' 사용) ✨] ---
+                # HTML <br> 대신 일반 줄바꿈 문자 '\n' 사용
+                bar_text = f"{job_name}\n{task['task_name_disp']}\n{task['batch_no']}"
                 # --- [수정 완료] ---
 
                 schedule_results.append(dict(
@@ -180,7 +180,6 @@ def load_and_parse_data(excel_path, sheet_name, cols_map):
         tasks_list = []
 
         first_priority = int(group_df.iloc[0][cols_map['priority']])
-        # 제조번호가 비어있을 경우 대비 (fillna('') 추가)
         first_batch_no = str(group_df.iloc[0][cols_map['batch']]) if not pd.isna(group_df.iloc[0][cols_map['batch']]) else ''
 
 
@@ -373,9 +372,7 @@ def run_app():
 
 
     # (필터링 로직)
-    # [✨ Merge 정보에 '제조번호' 추가 확인 ✨]
     merge_cols = [COLS_MAP['id'], COLS_MAP['department'], COLS_MAP['display'], COLS_MAP['priority'], COLS_MAP['batch']]
-    # id 열을 문자열로 변환하여 merge 준비
     info_map = df_raw[merge_cols].drop_duplicates(subset=[COLS_MAP['id']]).astype({COLS_MAP['id']: str})
 
 
@@ -411,7 +408,7 @@ def run_app():
             x_end="Finish_dt",
             y="Machine",
             color="Task", # 범례: 제품명
-            text="BarText",  # <-- [✨ 막대 텍스트를 줄바꿈 포함된 BarText로 ✨]
+            text="BarText",  # <-- '\n' 포함된 BarText 사용
             title=f"APS 스케줄링 결과 (총 {makespan}시간)",
             hover_data=[COLS_MAP['priority'], COLS_MAP['batch']]
         )
@@ -454,7 +451,6 @@ def run_app():
 
     # --- 5. 상세 데이터 테이블 표시 ---
     with st.expander("필터링된 스케줄링 상세 데이터 보기 ('우선순위', '제조번호' 포함)"):
-        # 필요한 열만 선택하여 보여주기
         display_cols = ['Job', 'Task', 'BatchNo', COLS_MAP['priority'], 'Machine', 'Start_dt', 'Finish_dt', 'Duration']
         df_display = df_filtered[display_cols].copy()
         df_display['Start_dt'] = df_display['Start_dt'].dt.strftime('%Y-%m-%d %H:%M')
