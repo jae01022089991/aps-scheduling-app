@@ -45,31 +45,21 @@ def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # pr
 
     # 주말 '금지 구간' 계산
     weekend_definitions = []
-    # 주말 계산 시 estimated_horizon을 시간 단위로 사용
     end_horizon_time = project_start_time + pd.Timedelta(hours=estimated_horizon)
-    # 날짜 범위 생성 시에도 project_start_time 사용
     all_dates = pd.date_range(start=project_start_time.floor('D'), end=end_horizon_time.ceil('D'), freq='D')
 
 
     for day in all_dates:
         if day.dayofweek >= 5: # 토(5) 또는 일(6)
             weekend_start_abs = day
-            # project_start_time 기준으로 상대 시간 계산
             weekend_start_rel_h = int((weekend_start_abs - project_start_time).total_seconds() / 3600)
-
             weekend_end_abs = day + pd.Timedelta(days=1)
             weekend_end_rel_h = int((weekend_end_abs - project_start_time).total_seconds() / 3600)
-
-            # 계산된 상대 시간이 음수가 되지 않도록 조정
             start_h = max(0, weekend_start_rel_h)
-            # 종료 시간도 estimated_horizon 범위 내로 제한
             end_h = min(estimated_horizon, weekend_end_rel_h)
-
             duration = end_h - start_h
-
             if duration > 0:
                 weekend_definitions.append((start_h, duration))
-                # print(f"주말 금지 구간 추가: {day.strftime('%Y-%m-%d')} (Hour {start_h} ~ {end_h})") # 로그 제거
 
     weekend_intervals = []
     for i, (w_start, w_duration) in enumerate(weekend_definitions):
@@ -139,16 +129,11 @@ def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # pr
 
     model.Minimize(sum(objective_terms))
 
-    # print(f"--- 우선순위 가중치 강화 (P1^3) 및 주말 제외 스케줄링 활성화 ---") # 로그 제거
-
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 60.0 # <-- 시간제한 60초
-    # print(f"--- 솔버 시간제한 60초 설정 ---") # 로그 제거
-
     status = solver.Solve(model)
 
     if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
-        # print(f"\n✅ 스케줄을 찾았습니다! (Makespan: {solver.Value(makespan)})") # 로그 제거
         schedule_results = []
         for job_name, job_tasks in jobs_data.items():
             for i in range(len(job_tasks)):
@@ -171,7 +156,6 @@ def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # pr
                 ))
         return schedule_results, solver.Value(makespan)
     else:
-        # print(f"\n❌ 스케줄을 찾지 못했습니다. (상태 코드: {status})") # 로그 제거
         st.error(f"❌ 최적의 스케줄을 찾지 못했습니다. (솔버 상태: {status})")
         st.warning("데이터에 무리한 제약이 없는지, 또는 주말 제외로 인해 실행 가능한 스케줄이 없는지 확인하세요.")
         return None, None
@@ -185,8 +169,6 @@ def load_and_parse_data(excel_path, sheet_name, cols_map):
     """
     엑셀 파일을 로드하고 스케줄링에 필요한 형식으로 파싱합니다.
     """
-    # print("--- 엑셀 데이터 로드 및 파싱 실행 ---") # 로그 제거
-
     df = pd.read_excel(excel_path, sheet_name=sheet_name)
 
     required_cols = list(cols_map.values())
@@ -246,7 +228,6 @@ def run_solver(_jobs_data, _all_machines, _project_start_time): # 인자 추가
     캐시된 스케줄링 엔진을 실행합니다.
     _project_start_time 값이 바뀌면 캐시가 무효화되고 재계산됩니다.
     """
-    # print(f"--- APS 스케줄링 최적화 엔진 실행 (시작 시간: {_project_start_time}) ---") # 로그 제거
     return solve_job_shop_scheduling(_jobs_data, _all_machines, _project_start_time)
 
 # -----------------------------------------------------------------
@@ -270,10 +251,8 @@ def run_app():
              col1.image(logo_path, width=70)
          except Exception as e:
             col1.write("")
-            # print(f"로고 로드 실패: {e}") # 로그 제거
     except Exception as e:
         col1.write("")
-        # print(f"로고 로드 실패: {e}") # 로그 제거
     col2.title("AJUPHARM-APS")
 
 
@@ -297,30 +276,22 @@ def run_app():
         'batch': '제조번호'
     }
 
-    # --- [✨ 스케줄링 시작 날짜 위젯 및 주말 조정 로직 ✨] ---
+    # --- 스케줄링 시작 날짜 위젯 및 주말 조정 로직 ---
     st.sidebar.header("🗓️ 스케줄링 기준")
     selected_start_date = st.sidebar.date_input(
         "스케줄링 시작 날짜:",
         value=datetime.date.today()
     )
-
-    # 선택된 날짜가 주말인지 확인 (토=5, 일=6)
     selected_dt = pd.to_datetime(selected_start_date)
     adjusted_start_date = selected_dt
     is_adjusted = False
     if selected_dt.dayofweek >= 5:
-        # 주말이면 다음 월요일로 조정 (days=7 - dayofweek)
         days_to_monday = 7 - selected_dt.dayofweek
         adjusted_start_date = selected_dt + pd.Timedelta(days=days_to_monday)
         is_adjusted = True
-
-    # 최종 스케줄링 시작 시점 (조정된 날짜의 08:30)
     PROJECT_START_TIME = adjusted_start_date + pd.Timedelta(hours=8, minutes=30)
-
-    # 사용자에게 조정 알림 (필요시)
     if is_adjusted:
-        st.sidebar.warning(f"선택하신 날짜({selected_start_date.strftime('%Y-%m-%d')})가 주말이므로, 스케줄링 시작 날짜가 {adjusted_start_date.strftime('%Y-%m-%d')} 오전 8시 30분으로 자동 조정되었습니다.")
-    # --- [수정 완료] ---
+        st.sidebar.warning(f"선택 날짜가 주말이므로 {adjusted_start_date.strftime('%Y-%m-%d')} 오전 8시 30분으로 조정됨.")
 
 
     # --- 2. 데이터 로드 및 스케줄링 실행 (캐시 활용) ---
@@ -328,10 +299,9 @@ def run_app():
         jobs_data, all_machines, df_raw = load_and_parse_data(EXCEL_FILE_PATH, EXCEL_SHEET_NAME, COLS_MAP)
 
         if jobs_data is None:
-             st.error("스케줄링할 데이터가 없습니다. (엑셀의 '소요시간(H)', '우선순위', '공정' 열 확인)")
+             st.error("스케줄링할 데이터가 없습니다.")
              st.stop()
 
-        # run_solver 호출 시 조정된 PROJECT_START_TIME 전달
         results, makespan = run_solver(jobs_data, all_machines, PROJECT_START_TIME)
 
         if results is None:
@@ -339,7 +309,6 @@ def run_app():
 
     except FileNotFoundError as e:
         st.error(f"❌ 오류: {e}")
-        st.info("스크립트와 엑셀 파일이 동일한 폴더에 있는지, 열 이름이 정확한지 확인하세요.")
         st.stop()
     except Exception as e:
         st.error(f"❌ 데이터 로드/검증 중 오류: {e}")
@@ -348,116 +317,50 @@ def run_app():
     # --- 3. UI 위젯 생성 (사이드바) ---
     st.sidebar.header("📊 뷰 옵션")
     view_days = st.sidebar.number_input(
-        "표시할 일 수 (Days):",
-        min_value=1,
-        value=5, # 기본 5일
-        step=1
+        "표시할 일 수 (Days):", min_value=1, value=5, step=1
     )
-
-    # [✨ 차트 조회 시작 날짜 기본값을 '조정된' 시작 날짜로 ✨]
     start_date = st.sidebar.date_input(
-        "차트 조회 시작 날짜:",
-        value=adjusted_start_date.date() # <-- 조정된 날짜 사용
+        "차트 조회 시작 날짜:", value=adjusted_start_date.date()
     )
-    # --- [수정 완료] ---
 
     st.sidebar.header("⚙️ 데이터 필터")
-
-    # (연동 필터 1: 부서명)
+    # (필터 로직 생략 - 이전과 동일)
     all_departments = df_raw[COLS_MAP['department']].dropna().unique().tolist()
     with st.sidebar.expander("부서명 필터", expanded=False):
-        selected_departments = st.multiselect(
-            "부서 선택:",
-            options=sorted(all_departments),
-            default=all_departments,
-            label_visibility="collapsed"
-        )
-
-    # (연동 필터 2: 제품명)
+        selected_departments = st.multiselect("부서 선택:", options=sorted(all_departments), default=all_departments, label_visibility="collapsed")
     relevant_products = df_raw[df_raw[COLS_MAP['department']].isin(selected_departments)][COLS_MAP['display']].dropna().unique().tolist()
     with st.sidebar.expander("제품명 필터", expanded=False):
-        selected_products = st.multiselect(
-            "제품 선택:",
-            options=sorted(relevant_products),
-            default=relevant_products,
-            label_visibility="collapsed"
-        )
-
-    # (연동 필터 3: 오더번호)
-    relevant_orders = df_raw[
-        (df_raw[COLS_MAP['department']].isin(selected_departments)) &
-        (df_raw[COLS_MAP['display']].isin(selected_products))
-    ][COLS_MAP['id']].dropna().unique().tolist()
+        selected_products = st.multiselect("제품 선택:", options=sorted(relevant_products), default=relevant_products, label_visibility="collapsed")
+    relevant_orders = df_raw[(df_raw[COLS_MAP['department']].isin(selected_departments)) & (df_raw[COLS_MAP['display']].isin(selected_products))][COLS_MAP['id']].dropna().unique().tolist()
     relevant_orders_str = sorted([str(o) for o in relevant_orders])
-
     with st.sidebar.expander("오더번호 필터", expanded=False):
-        selected_orders = st.multiselect(
-            "오더 선택:",
-            options=relevant_orders_str,
-            default=relevant_orders_str,
-            label_visibility="collapsed"
-        )
-
-
-    # (연동 필터 4: 설비명)
-    relevant_machines = df_raw[
-        (df_raw[COLS_MAP['department']].isin(selected_departments)) &
-        (df_raw[COLS_MAP['display']].isin(selected_products)) &
-        (df_raw[COLS_MAP['id']].astype(str).isin(selected_orders))
-    ][COLS_MAP['machine']].dropna().unique().tolist()
-
+        selected_orders = st.multiselect("오더 선택:", options=relevant_orders_str, default=relevant_orders_str, label_visibility="collapsed")
+    relevant_machines = df_raw[(df_raw[COLS_MAP['department']].isin(selected_departments)) & (df_raw[COLS_MAP['display']].isin(selected_products)) & (df_raw[COLS_MAP['id']].astype(str).isin(selected_orders))][COLS_MAP['machine']].dropna().unique().tolist()
     with st.sidebar.expander("설비 필터", expanded=False):
-        selected_machines = st.multiselect(
-            "설비 선택:",
-            options=sorted(relevant_machines),
-            default=relevant_machines,
-            label_visibility="collapsed"
-        )
+        selected_machines = st.multiselect("설비 선택:", options=sorted(relevant_machines), default=relevant_machines, label_visibility="collapsed")
 
     st.sidebar.info(f"총 {len(jobs_data)}개 오더\n\n총 {makespan}시간 소요\n(우선순위/주말제외 적용됨)")
 
     # --- 4. 간트 차트 생성 및 필터링 ---
-
-    df_results = pd.DataFrame(results) # 'BarText' 포함됨
-    # 스케줄 시간 계산 시 조정된 PROJECT_START_TIME 사용
+    df_results = pd.DataFrame(results)
     df_results['Start_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Start'], unit='h')
     df_results['Finish_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Finish'], unit='h')
-
-    # 차트 X축 범위
     start_datetime_chart = pd.to_datetime(start_date)
     start_datetime_view = start_datetime_chart.floor('D')
     end_datetime_view = start_datetime_view + pd.to_timedelta(view_days, unit='d')
 
-
-    # (필터링 로직)
+    # (필터링 로직 생략 - 이전과 동일)
     merge_cols = [COLS_MAP['id'], COLS_MAP['department'], COLS_MAP['display'], COLS_MAP['priority'], COLS_MAP['batch']]
     info_map = df_raw[merge_cols].drop_duplicates(subset=[COLS_MAP['id']]).astype({COLS_MAP['id']: str})
-
-
-    df_results_with_info = pd.merge(
-        df_results,
-        info_map,
-        left_on='Job',
-        right_on=COLS_MAP['id'],
-        how='left'
-    )
-
-    df_filtered = df_results_with_info[
-        (df_results_with_info['Machine'].isin(selected_machines)) &
-        (df_results_with_info[COLS_MAP['department']].isin(selected_departments)) &
-        (df_results_with_info[COLS_MAP['display']].isin(selected_products)) &
-        (df_results_with_info['Job'].isin(selected_orders))
-    ]
+    df_results_with_info = pd.merge(df_results, info_map, left_on='Job', right_on=COLS_MAP['id'], how='left')
+    df_filtered = df_results_with_info[(df_results_with_info['Machine'].isin(selected_machines)) & (df_results_with_info[COLS_MAP['department']].isin(selected_departments)) & (df_results_with_info[COLS_MAP['display']].isin(selected_products)) & (df_results_with_info['Job'].isin(selected_orders))]
 
     if df_filtered.empty:
         st.warning("선택한 필터에 해당하는 데이터가 없습니다.")
     else:
-        # (Y축 정렬 로직)
+        # (Y축 정렬 로직 생략 - 이전과 동일)
         min_step_by_machine = df_raw.groupby(COLS_MAP['machine'])[COLS_MAP['step']].min().fillna(9999)
-        sorted_selected_machines = sorted(
-            selected_machines,
-            key=lambda machine: min_step_by_machine.get(machine, 9999)
-        )
+        sorted_selected_machines = sorted(selected_machines, key=lambda machine: min_step_by_machine.get(machine, 9999))
 
         # 4-2. 간트 차트 생성
         fig = px.timeline(
@@ -471,11 +374,11 @@ def run_app():
             hover_data=[COLS_MAP['priority'], COLS_MAP['batch']]
         )
 
-        fig.update_traces(textposition='middle center', textfont=dict(size=10)) # 텍스트 중앙/크기
+        # --- [✨ fig.update_traces 제거 ✨] ---
+        # (오류 발생 지점 제거됨)
+        # --- [수정 완료] ---
 
-        # (차트 레이아웃)
         chart_height = (len(selected_machines) * 50) + 150
-
         fig.update_layout(
             height=chart_height,
             yaxis=dict(
@@ -501,11 +404,11 @@ def run_app():
             font=dict(
                 family="Malgun Gothic, sans-serif",
                 size=12
-            )
+            ),
+            # uniformtext 관련 설정 제거 (문제가 될 수 있음)
         )
 
         st.plotly_chart(fig, use_container_width=True)
-
 
     # --- 5. 상세 데이터 테이블 표시 ---
     with st.expander("필터링된 스케줄링 상세 데이터 보기 ('우선순위', '제조번호' 포함)"):
@@ -514,7 +417,6 @@ def run_app():
         df_display['Start_dt'] = df_display['Start_dt'].dt.strftime('%Y-%m-%d %H:%M')
         df_display['Finish_dt'] = df_display['Finish_dt'].dt.strftime('%Y-%m-%d %H:%M')
         st.dataframe(df_display)
-
 
     with st.expander("원본 엑셀 데이터 보기 (정리 후)"):
         st.dataframe(df_raw)
