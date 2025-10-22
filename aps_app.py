@@ -60,7 +60,7 @@ def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # pr
             duration = end_h - start_h
             if duration > 0:
                 weekend_definitions.append((start_h, duration))
-                print(f"주말 금지 구간 추가: {day.strftime('%Y-%m-%d')} (Hour {start_h} ~ {end_h})")
+                # print(f"주말 금지 구간 추가: {day.strftime('%Y-%m-%d')} (Hour {start_h} ~ {end_h})") # 로그 제거
 
     weekend_intervals = []
     for i, (w_start, w_duration) in enumerate(weekend_definitions):
@@ -130,16 +130,16 @@ def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # pr
 
     model.Minimize(sum(objective_terms))
 
-    print(f"--- 우선순위 가중치 강화 (P1^3) 및 주말 제외 스케줄링 활성화 ---")
+    # print(f"--- 우선순위 가중치 강화 (P1^3) 및 주말 제외 스케줄링 활성화 ---") # 로그 제거
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 60.0 # <-- 시간제한 60초
-    print(f"--- 솔버 시간제한 60초 설정 ---")
+    # print(f"--- 솔버 시간제한 60초 설정 ---") # 로그 제거
 
     status = solver.Solve(model)
 
     if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
-        print(f"\n✅ 스케줄을 찾았습니다! (Makespan: {solver.Value(makespan)})")
+        # print(f"\n✅ 스케줄을 찾았습니다! (Makespan: {solver.Value(makespan)})") # 로그 제거
         schedule_results = []
         for job_name, job_tasks in jobs_data.items():
             for i in range(len(job_tasks)):
@@ -162,7 +162,7 @@ def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # pr
                 ))
         return schedule_results, solver.Value(makespan)
     else:
-        print(f"\n❌ 스케줄을 찾지 못했습니다. (상태 코드: {status})")
+        # print(f"\n❌ 스케줄을 찾지 못했습니다. (상태 코드: {status})") # 로그 제거
         st.error(f"❌ 최적의 스케줄을 찾지 못했습니다. (솔버 상태: {status})")
         st.warning("데이터에 무리한 제약이 없는지, 또는 주말 제외로 인해 실행 가능한 스케줄이 없는지 확인하세요.")
         return None, None
@@ -176,7 +176,7 @@ def load_and_parse_data(excel_path, sheet_name, cols_map):
     """
     엑셀 파일을 로드하고 스케줄링에 필요한 형식으로 파싱합니다.
     """
-    print("--- 엑셀 데이터 로드 및 파싱 실행 ---")
+    # print("--- 엑셀 데이터 로드 및 파싱 실행 ---") # 로그 제거
 
     df = pd.read_excel(excel_path, sheet_name=sheet_name)
 
@@ -237,8 +237,7 @@ def run_solver(_jobs_data, _all_machines, _project_start_time): # 인자 추가
     캐시된 스케줄링 엔진을 실행합니다.
     _project_start_time 값이 바뀌면 캐시가 무효화되고 재계산됩니다.
     """
-    print(f"--- APS 스케줄링 최적화 엔진 실행 (시작 시간: {_project_start_time}) ---")
-    # 실제 계산에는 jobs_data와 all_machines, project_start_time 필요
+    # print(f"--- APS 스케줄링 최적화 엔진 실행 (시작 시간: {_project_start_time}) ---") # 로그 제거
     return solve_job_shop_scheduling(_jobs_data, _all_machines, _project_start_time)
 
 # -----------------------------------------------------------------
@@ -262,10 +261,10 @@ def run_app():
              col1.image(logo_path, width=70)
          except Exception as e:
             col1.write("")
-            print(f"로고 로드 실패: {e}")
+            # print(f"로고 로드 실패: {e}") # 로그 제거
     except Exception as e:
         col1.write("")
-        print(f"로고 로드 실패: {e}")
+        # print(f"로고 로드 실패: {e}") # 로그 제거
     col2.title("AJUPHARM-APS")
 
 
@@ -441,7 +440,7 @@ def run_app():
             hover_data=[COLS_MAP['priority'], COLS_MAP['batch']]
         )
 
-        # --- [✨ 텍스트 폰트 설정 수정 ✨] ---
+        # --- [✨ 텍스트 폰트 설정 수정 (오류 수정) ✨] ---
         # textfont_size 대신 textfont=dict(size=...) 사용
         fig.update_traces(textposition='middle center', textfont=dict(size=10))
         # --- [수정 완료] ---
