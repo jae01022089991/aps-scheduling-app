@@ -8,7 +8,7 @@ import datetime # 오늘 날짜를 가져오기 위해 import
 
 # -----------------------------------------------------------------
 # [1. APS 스케줄링 최적화 엔진 함수]
-# (이 함수는 수정할 필요가 없습니다 - BarText에 <br> 사용 확인)
+# (결과 생성 부분 복구됨)
 # -----------------------------------------------------------------
 def solve_job_shop_scheduling(jobs_data, all_machines):
     """
@@ -65,7 +65,7 @@ def solve_job_shop_scheduling(jobs_data, all_machines):
                 'machine': machine_name,
                 'duration': duration,
                 'task_name_disp': task_info.get('display_name', 'task'), # 제품명
-                'batch_no': task_info.get('batch_no', ''), # 제조번호
+                # 'batch_no': task_info.get('batch_no', ''), # 제조번호 (결과 생성 시 사용 안 함)
                 'priority': task_info.get('priority', max_priority_level)
             }
             task_intervals[machine_name].append(interval_var)
@@ -115,21 +115,18 @@ def solve_job_shop_scheduling(jobs_data, all_machines):
                 start_time = solver.Value(task['start'])
                 end_time = solver.Value(task['end'])
 
-                # --- [✨ 막대 텍스트 조합 (<br> 사용 확인) ✨] ---
-                # HTML 줄바꿈 태그 '<br>' 사용
-                bar_text = f"{job_name}<br>{task['task_name_disp']}<br>{task['batch_no']}"
-                # --- [수정 완료] ---
-
+                # --- [✨ 결과 생성 복구 ✨] ---
+                # BarText 대신 기본 정보만 저장
                 schedule_results.append(dict(
                     Job=job_name, # 오더번호
                     Machine=task['machine'],
                     Start=start_time,
                     Finish=end_time,
                     Duration=task['duration'],
-                    Task=task['task_name_disp'], # 제품명
-                    BatchNo=task['batch_no'], # 제조번호
-                    BarText=bar_text # 조합된 텍스트 (<br> 포함)
+                    Task=task['task_name_disp'] # 제품명
+                    # BatchNo 제거
                 ))
+                # --- [수정 완료] ---
         return schedule_results, solver.Value(makespan)
     else:
         print(f"\n❌ 스케줄을 찾지 못했습니다. (상태 코드: {status})")
@@ -150,6 +147,7 @@ def load_and_parse_data(excel_path, sheet_name, cols_map):
 
     df = pd.read_excel(excel_path, sheet_name=sheet_name)
 
+    # [✨ COLS_MAP에서 'batch' 제거되므로 필수 열 검사 자동 수정됨 ✨]
     required_cols = list(cols_map.values())
     if not all(col in df.columns for col in required_cols):
         raise FileNotFoundError(f"엑셀에 필수 열({required_cols})이 없습니다. 현재 열: {df.columns.tolist()}")
@@ -180,8 +178,7 @@ def load_and_parse_data(excel_path, sheet_name, cols_map):
         tasks_list = []
 
         first_priority = int(group_df.iloc[0][cols_map['priority']])
-        first_batch_no = str(group_df.iloc[0][cols_map['batch']]) if not pd.isna(group_df.iloc[0][cols_map['batch']]) else ''
-
+        # first_batch_no 제거
 
         for index, row in group_df.iterrows():
             display_name = row.get(cols_map['display'])
@@ -192,7 +189,7 @@ def load_and_parse_data(excel_path, sheet_name, cols_map):
                 'machine': row[cols_map['machine']],
                 'duration': row[cols_map['duration']],
                 'display_name': display_name, # 제품명
-                'batch_no': first_batch_no,   # 제조번호
+                # 'batch_no': first_batch_no,   # 제거
                 'priority': first_priority
             })
         jobs_data_parsed[str(job_name)] = tasks_list # 오더번호를 문자열 키로 사용
@@ -246,6 +243,7 @@ def run_app():
 
     EXCEL_SHEET_NAME = 'Sheet1'
 
+    # --- [✨ COLS_MAP에서 'batch' 제거 ✨] ---
     COLS_MAP = {
         'id': '오더번호',
         'step': '공정',
@@ -253,9 +251,10 @@ def run_app():
         'duration': '소요시간(H)',
         'display': '제품명',
         'department': '부서명',
-        'priority': '우선순위',
-        'batch': '제조번호'
+        'priority': '우선순위'
+        # 'batch': '제조번호' # <-- 제거
     }
+    # --- [수정 완료] ---
 
     # 오늘 날짜 기준으로 시작 시간 설정
     today_start = pd.Timestamp.now().floor('D')
@@ -361,7 +360,7 @@ def run_app():
 
     # --- 4. 간트 차트 생성 및 필터링 ---
 
-    df_results = pd.DataFrame(results) # 'BarText' 포함됨
+    df_results = pd.DataFrame(results) # 'BarText' 없음
     df_results['Start_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Start'], unit='h')
     df_results['Finish_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Finish'], unit='h')
 
@@ -371,8 +370,8 @@ def run_app():
     end_datetime_view = start_datetime_view + pd.to_timedelta(view_days, unit='d')
 
 
-    # (필터링 로직)
-    merge_cols = [COLS_MAP['id'], COLS_MAP['department'], COLS_MAP['display'], COLS_MAP['priority'], COLS_MAP['batch']]
+    # [✨ Merge 정보에서 'batch' 제거 ✨]
+    merge_cols = [COLS_MAP['id'], COLS_MAP['department'], COLS_MAP['display'], COLS_MAP['priority']]
     info_map = df_raw[merge_cols].drop_duplicates(subset=[COLS_MAP['id']]).astype({COLS_MAP['id']: str})
 
 
@@ -408,30 +407,15 @@ def run_app():
             x_end="Finish_dt",
             y="Machine",
             color="Task", # 범례: 제품명
-            # text="BarText",  # <-- [✨ text 옵션 제거 ✨]
+            # --- [✨ 막대 텍스트를 'Job'(오더번호)으로 복구 ✨] ---
+            text="Job",
             title=f"APS 스케줄링 결과 (총 {makespan}시간)",
-            hover_data=[COLS_MAP['priority'], COLS_MAP['batch']]
+            # --- [✨ hover_data에서 'batch' 제거 ✨] ---
+            hover_data=[COLS_MAP['priority']]
         )
-
-        # fig.update_traces(textposition='inside') # <-- 제거
-
-        # --- [✨ 주석(Annotation)으로 텍스트 추가 ✨] ---
-        annotations = []
-        for index, row in df_filtered.iterrows():
-            # 막대 중앙의 x 좌표 계산
-            mid_time = row['Start_dt'] + (row['Finish_dt'] - row['Start_dt']) / 2
-            annotations.append(
-                dict(
-                    x=mid_time,           # x 위치: 막대 중앙 시간
-                    y=row['Machine'],     # y 위치: 설비명
-                    text=row['BarText'],  # 표시할 텍스트 (<br> 포함)
-                    showarrow=False,      # 화살표 숨기기
-                    font=dict(color='black', size=10), # 폰트 설정 (필요시 조절)
-                    align='center'        # 가운데 정렬
-                )
-            )
         # --- [수정 완료] ---
 
+        fig.update_traces(textposition='inside')
 
         # (막대 늘어남 방지 및 날짜/시간 형식, 구분선)
         chart_height = (len(selected_machines) * 50) + 150
@@ -461,17 +445,16 @@ def run_app():
             font=dict(
                 family="Malgun Gothic, sans-serif",
                 size=12
-            ),
-            # [✨ 생성된 주석 리스트를 레이아웃에 추가 ✨]
-            annotations=annotations
+            )
         )
 
         st.plotly_chart(fig, use_container_width=True)
 
 
     # --- 5. 상세 데이터 테이블 표시 ---
-    with st.expander("필터링된 스케줄링 상세 데이터 보기 ('우선순위', '제조번호' 포함)"):
-        display_cols = ['Job', 'Task', 'BatchNo', COLS_MAP['priority'], 'Machine', 'Start_dt', 'Finish_dt', 'Duration']
+    with st.expander("필터링된 스케줄링 상세 데이터 보기 ('우선순위' 포함)"):
+        # [✨ 표시 열에서 BatchNo 제거 ✨]
+        display_cols = ['Job', 'Task', COLS_MAP['priority'], 'Machine', 'Start_dt', 'Finish_dt', 'Duration']
         df_display = df_filtered[display_cols].copy()
         df_display['Start_dt'] = df_display['Start_dt'].dt.strftime('%Y-%m-%d %H:%M')
         df_display['Finish_dt'] = df_display['Finish_dt'].dt.strftime('%Y-%m-%d %H:%M')
