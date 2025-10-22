@@ -8,7 +8,7 @@ import datetime # 오늘 날짜를 가져오기 위해 import
 
 # -----------------------------------------------------------------
 # [1. APS 스케줄링 최적화 엔진 함수]
-# (결과 생성 부분 수정됨)
+# (이 함수는 수정할 필요가 없습니다)
 # -----------------------------------------------------------------
 def solve_job_shop_scheduling(jobs_data, all_machines):
     """
@@ -65,7 +65,7 @@ def solve_job_shop_scheduling(jobs_data, all_machines):
                 'machine': machine_name,
                 'duration': duration,
                 'task_name_disp': task_info.get('display_name', 'task'), # 제품명
-                'batch_no': task_info.get('batch_no', ''), # [✨ 추가 ✨] 제조번호 저장
+                'batch_no': task_info.get('batch_no', ''), # 제조번호
                 'priority': task_info.get('priority', max_priority_level)
             }
             task_intervals[machine_name].append(interval_var)
@@ -115,9 +115,8 @@ def solve_job_shop_scheduling(jobs_data, all_machines):
                 start_time = solver.Value(task['start'])
                 end_time = solver.Value(task['end'])
 
-                # --- [✨ 막대 텍스트 조합 ✨] ---
+                # 막대 텍스트 조합
                 bar_text = f"{job_name}/{task['task_name_disp']}/{task['batch_no']}"
-                # --- [수정 완료] ---
 
                 schedule_results.append(dict(
                     Job=job_name, # 오더번호
@@ -179,7 +178,6 @@ def load_and_parse_data(excel_path, sheet_name, cols_map):
         tasks_list = []
 
         first_priority = int(group_df.iloc[0][cols_map['priority']])
-        # [✨ 추가 ✨] 오더별로 제조번호가 동일하다고 가정하고 첫 번째 값 사용
         first_batch_no = str(group_df.iloc[0][cols_map['batch']])
 
         for index, row in group_df.iterrows():
@@ -191,7 +189,7 @@ def load_and_parse_data(excel_path, sheet_name, cols_map):
                 'machine': row[cols_map['machine']],
                 'duration': row[cols_map['duration']],
                 'display_name': display_name, # 제품명
-                'batch_no': first_batch_no,   # [✨ 추가 ✨] 제조번호
+                'batch_no': first_batch_no,   # 제조번호
                 'priority': first_priority
             })
         jobs_data_parsed[str(job_name)] = tasks_list # 오더번호를 문자열 키로 사용
@@ -227,7 +225,6 @@ def run_app():
 
     EXCEL_SHEET_NAME = 'Sheet1'
 
-    # --- [✨ '제조번호' 열 매핑 추가 ✨] ---
     COLS_MAP = {
         'id': '오더번호',
         'step': '공정',
@@ -236,9 +233,8 @@ def run_app():
         'display': '제품명',
         'department': '부서명',
         'priority': '우선순위',
-        'batch': '제조번호' # <-- 제조번호 열 이름 추가
+        'batch': '제조번호'
     }
-    # --- [수정 완료] ---
 
     # 오늘 날짜 기준으로 시작 시간 설정
     today_start = pd.Timestamp.now().floor('D')
@@ -338,7 +334,7 @@ def run_app():
 
     # --- 4. 간트 차트 생성 및 필터링 ---
 
-    df_results = pd.DataFrame(results) # <-- 'BarText' 열 포함됨
+    df_results = pd.DataFrame(results)
     df_results['Start_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Start'], unit='h')
     df_results['Finish_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Finish'], unit='h')
 
@@ -347,7 +343,7 @@ def run_app():
     end_datetime_view = start_datetime_view + pd.to_timedelta(view_days, unit='d')
 
 
-    # [✨ Merge 정보에 '제조번호' 추가 ✨]
+    # (필터링 로직)
     merge_cols = [COLS_MAP['id'], COLS_MAP['department'], COLS_MAP['display'], COLS_MAP['priority'], COLS_MAP['batch']]
     info_map = df_raw[merge_cols].drop_duplicates(subset=[COLS_MAP['id']]).astype({COLS_MAP['id']: str})
 
@@ -384,16 +380,14 @@ def run_app():
             x_end="Finish_dt",
             y="Machine",
             color="Task", # 범례: 제품명
-            # --- [✨ 막대 텍스트를 'BarText'로 변경 ✨] ---
-            text="BarText",  # <-- 'Job' 대신 조합된 'BarText' 사용
+            text="BarText",  # 막대 텍스트: 조합된 텍스트
             title=f"APS 스케줄링 결과 (총 {makespan}시간)",
-            hover_data=[COLS_MAP['priority'], COLS_MAP['batch']] # 툴팁에도 제조번호 추가
+            hover_data=[COLS_MAP['priority'], COLS_MAP['batch']]
         )
-        # --- [수정 완료] ---
 
         fig.update_traces(textposition='inside')
 
-        # (막대 늘어남 방지 및 날짜/시간 형식)
+        # [✨ 차트 레이아웃 수정 (구분선 스타일 추가) ✨]
         chart_height = (len(selected_machines) * 50) + 150
 
         fig.update_layout(
@@ -409,7 +403,9 @@ def run_app():
                 range=[start_datetime_view, end_datetime_view],
                 rangeslider=dict(visible=True),
                 side='top',
-                tickformat='%y-%m-%d<br>%H:%M'
+                tickformat='%y-%m-%d<br>%H:%M',
+                gridcolor='gray', # <-- 구분선 색상
+                gridwidth=1      # <-- 구분선 두께
             ),
             margin=dict(l=50, r=250, t=100, b=50),
             legend=dict(
@@ -421,13 +417,14 @@ def run_app():
                 size=12
             )
         )
+        # --- [수정 완료] ---
 
         st.plotly_chart(fig, use_container_width=True)
 
 
     # --- 5. 상세 데이터 테이블 표시 ---
     with st.expander("필터링된 스케줄링 상세 데이터 보기 ('우선순위', '제조번호' 포함)"):
-        st.dataframe(df_filtered) # df_filtered에 이미 제조번호 포함됨
+        st.dataframe(df_filtered)
 
     with st.expander("원본 엑셀 데이터 보기 (정리 후)"):
         st.dataframe(df_raw)
