@@ -8,7 +8,7 @@ import datetime # 오늘 날짜를 가져오기 위해 import
 
 # -----------------------------------------------------------------
 # [1. APS 스케줄링 최적화 엔진 함수]
-# (시간제한 10초로 수정됨)
+# (이 함수는 수정할 필요가 없습니다)
 # -----------------------------------------------------------------
 def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # project_start_time 추가
     """
@@ -45,19 +45,28 @@ def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # pr
 
     # 주말 '금지 구간' 계산
     weekend_definitions = []
-    current_time = project_start_time
+    # 주말 계산 시 estimated_horizon을 시간 단위로 사용
     end_horizon_time = project_start_time + pd.Timedelta(hours=estimated_horizon)
+    # 날짜 범위 생성 시에도 project_start_time 사용
     all_dates = pd.date_range(start=project_start_time.floor('D'), end=end_horizon_time.ceil('D'), freq='D')
+
 
     for day in all_dates:
         if day.dayofweek >= 5: # 토(5) 또는 일(6)
             weekend_start_abs = day
+            # project_start_time 기준으로 상대 시간 계산
             weekend_start_rel_h = int((weekend_start_abs - project_start_time).total_seconds() / 3600)
+
             weekend_end_abs = day + pd.Timedelta(days=1)
             weekend_end_rel_h = int((weekend_end_abs - project_start_time).total_seconds() / 3600)
+
+            # 계산된 상대 시간이 음수가 되지 않도록 조정
             start_h = max(0, weekend_start_rel_h)
+            # 종료 시간도 estimated_horizon 범위 내로 제한
             end_h = min(estimated_horizon, weekend_end_rel_h)
+
             duration = end_h - start_h
+
             if duration > 0:
                 weekend_definitions.append((start_h, duration))
                 # print(f"주말 금지 구간 추가: {day.strftime('%Y-%m-%d')} (Hour {start_h} ~ {end_h})") # 로그 제거
@@ -133,10 +142,8 @@ def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # pr
     # print(f"--- 우선순위 가중치 강화 (P1^3) 및 주말 제외 스케줄링 활성화 ---") # 로그 제거
 
     solver = cp_model.CpSolver()
-    # --- [✨ 시간제한 10초로 수정 ✨] ---
-    solver.parameters.max_time_in_seconds = 10.0
-    print(f"--- 솔버 시간제한 10초 설정 (테스트용) ---")
-    # --- [수정 완료] ---
+    solver.parameters.max_time_in_seconds = 60.0 # <-- 시간제한 60초
+    # print(f"--- 솔버 시간제한 60초 설정 ---") # 로그 제거
 
     status = solver.Solve(model)
 
@@ -290,13 +297,30 @@ def run_app():
         'batch': '제조번호'
     }
 
-    # --- 스케줄링 시작 날짜 위젯 ---
+    # --- [✨ 스케줄링 시작 날짜 위젯 및 주말 조정 로직 ✨] ---
     st.sidebar.header("🗓️ 스케줄링 기준")
-    scheduling_start_date = st.sidebar.date_input(
+    selected_start_date = st.sidebar.date_input(
         "스케줄링 시작 날짜:",
         value=datetime.date.today()
     )
-    PROJECT_START_TIME = pd.to_datetime(scheduling_start_date) + pd.Timedelta(hours=8, minutes=30)
+
+    # 선택된 날짜가 주말인지 확인 (토=5, 일=6)
+    selected_dt = pd.to_datetime(selected_start_date)
+    adjusted_start_date = selected_dt
+    is_adjusted = False
+    if selected_dt.dayofweek >= 5:
+        # 주말이면 다음 월요일로 조정 (days=7 - dayofweek)
+        days_to_monday = 7 - selected_dt.dayofweek
+        adjusted_start_date = selected_dt + pd.Timedelta(days=days_to_monday)
+        is_adjusted = True
+
+    # 최종 스케줄링 시작 시점 (조정된 날짜의 08:30)
+    PROJECT_START_TIME = adjusted_start_date + pd.Timedelta(hours=8, minutes=30)
+
+    # 사용자에게 조정 알림 (필요시)
+    if is_adjusted:
+        st.sidebar.warning(f"선택하신 날짜({selected_start_date.strftime('%Y-%m-%d')})가 주말이므로, 스케줄링 시작 날짜가 {adjusted_start_date.strftime('%Y-%m-%d')} 오전 8시 30분으로 자동 조정되었습니다.")
+    # --- [수정 완료] ---
 
 
     # --- 2. 데이터 로드 및 스케줄링 실행 (캐시 활용) ---
@@ -307,7 +331,8 @@ def run_app():
              st.error("스케줄링할 데이터가 없습니다. (엑셀의 '소요시간(H)', '우선순위', '공정' 열 확인)")
              st.stop()
 
-        results, makespan = run_solver(jobs_data, all_machines, PROJECT_START_TIME) # project_start_time 전달
+        # run_solver 호출 시 조정된 PROJECT_START_TIME 전달
+        results, makespan = run_solver(jobs_data, all_machines, PROJECT_START_TIME)
 
         if results is None:
             st.stop()
@@ -328,10 +353,13 @@ def run_app():
         value=5, # 기본 5일
         step=1
     )
+
+    # [✨ 차트 조회 시작 날짜 기본값을 '조정된' 시작 날짜로 ✨]
     start_date = st.sidebar.date_input(
         "차트 조회 시작 날짜:",
-        value=scheduling_start_date # 기본값을 스케줄링 시작 날짜로
+        value=adjusted_start_date.date() # <-- 조정된 날짜 사용
     )
+    # --- [수정 완료] ---
 
     st.sidebar.header("⚙️ 데이터 필터")
 
@@ -391,6 +419,7 @@ def run_app():
     # --- 4. 간트 차트 생성 및 필터링 ---
 
     df_results = pd.DataFrame(results) # 'BarText' 포함됨
+    # 스케줄 시간 계산 시 조정된 PROJECT_START_TIME 사용
     df_results['Start_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Start'], unit='h')
     df_results['Finish_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Finish'], unit='h')
 
@@ -442,12 +471,9 @@ def run_app():
             hover_data=[COLS_MAP['priority'], COLS_MAP['batch']]
         )
 
-        # --- [✨ fig.update_traces 제거 ✨] ---
-        # (이전 오류 발생 지점 제거)
-        # fig.update_traces(textposition='middle center', textfont=dict(size=10))
-        # --- [수정 완료] ---
+        fig.update_traces(textposition='middle center', textfont=dict(size=10)) # 텍스트 중앙/크기
 
-        # (막대 늘어남 방지 및 날짜/시간 형식, 구분선)
+        # (차트 레이아웃)
         chart_height = (len(selected_machines) * 50) + 150
 
         fig.update_layout(
@@ -475,11 +501,7 @@ def run_app():
             font=dict(
                 family="Malgun Gothic, sans-serif",
                 size=12
-            ),
-            # --- [✨ 레이아웃에서 텍스트 스타일 조정 (대안) ✨] ---
-            # 모든 타임라인 텍스트에 적용 (크기 조절 제한적)
-            uniformtext_minsize=8, # 최소 폰트 크기
-            uniformtext_mode='hide'  # 공간 부족 시 텍스트 숨김
+            )
         )
 
         st.plotly_chart(fig, use_container_width=True)
