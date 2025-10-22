@@ -7,10 +7,10 @@ import os
 import datetime # 오늘 날짜를 가져오기 위해 import
 
 # -----------------------------------------------------------------
-# [1. (수정됨) APS 스케줄링 최적화 엔진 함수]
-# (주말 제외 로직 추가)
+# [1. APS 스케줄링 최적화 엔진 함수]
+# (이 함수는 수정할 필요가 없습니다)
 # -----------------------------------------------------------------
-def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # [✨ project_start_time 추가 ✨]
+def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # project_start_time 추가
     """
     APS 스케줄링 문제를 풀어 최적의 스케줄을 반환합니다. (주말 제외)
     """
@@ -27,10 +27,6 @@ def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # [�
 
     try:
         horizon = int(sum(task['duration'] for job in jobs_data.values() for task in job))
-        # [✨ 주말 제외로 인해 실제 완료 시간은 horizon보다 길어질 수 있음 ✨]
-        #    넉넉하게 horizon을 늘려 잡음 (예: 2배)
-        #    정확하게는 주말 일수만큼 더해야 하지만, 단순화 위해 2배 적용
-        #    (데이터 기간이 매우 길 경우 이 방식은 비효율적일 수 있음)
         estimated_horizon = horizon * 2 # 예상 총 기간
         if estimated_horizon == 0: estimated_horizon = 24 # 최소 기간
     except Exception as e:
@@ -47,42 +43,30 @@ def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # [�
 
     all_last_tasks = []
 
-    # --- [✨ 주말 '금지 구간' 계산 ✨] ---
-    weekend_definitions = [] # (start_hour, duration) 튜플 저장
+    # 주말 '금지 구간' 계산
+    weekend_definitions = []
     current_time = project_start_time
     end_horizon_time = project_start_time + pd.Timedelta(hours=estimated_horizon)
-
-    # horizon 기간 내의 모든 날짜 확인
     all_dates = pd.date_range(start=project_start_time.floor('D'), end=end_horizon_time.ceil('D'), freq='D')
 
     for day in all_dates:
-        # 토요일(5) 또는 일요일(6) 확인
-        if day.dayofweek >= 5:
-            # 주말 시작 시간 (00:00) 계산 (스케줄 시작 시점 기준 hour)
-            weekend_start_abs = day # pd.Timestamp
+        if day.dayofweek >= 5: # 토(5) 또는 일(6)
+            weekend_start_abs = day
             weekend_start_rel_h = int((weekend_start_abs - project_start_time).total_seconds() / 3600)
-
-            # 주말 종료 시간 (다음 날 00:00) 계산 (스케줄 시작 시점 기준 hour)
             weekend_end_abs = day + pd.Timedelta(days=1)
             weekend_end_rel_h = int((weekend_end_abs - project_start_time).total_seconds() / 3600)
-
-            # 주말 구간이 horizon 내에 있는지 확인 및 조정
             start_h = max(0, weekend_start_rel_h)
             end_h = min(estimated_horizon, weekend_end_rel_h)
             duration = end_h - start_h
-
             if duration > 0:
                 weekend_definitions.append((start_h, duration))
                 print(f"주말 금지 구간 추가: {day.strftime('%Y-%m-%d')} (Hour {start_h} ~ {end_h})")
 
-    # 주말 금지 구간을 위한 Interval 변수 생성 (솔버 내부용)
     weekend_intervals = []
     for i, (w_start, w_duration) in enumerate(weekend_definitions):
          weekend_intervals.append(
              model.NewIntervalVar(w_start, w_duration, w_start + w_duration, f'weekend_{i}')
          )
-    # --- [주말 계산 완료] ---
-
 
     for job_name, job_tasks in jobs_data.items():
         for i, task_info in enumerate(job_tasks):
@@ -108,17 +92,13 @@ def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # [�
             }
             task_intervals[machine_name].append(interval_var)
 
-            # --- [✨ 각 작업에 주말 금지 제약 추가 ✨] ---
-            # 각 작업(interval_var)이 모든 주말 구간(weekend_intervals)과 겹치지 않도록 함
-            # (주의: 이 방식은 작업과 주말 구간이 많으면 계산이 매우 느려질 수 있음)
+            # 각 작업에 주말 금지 제약 추가
             for w_interval in weekend_intervals:
-                # 작업이 주말 전에 끝나거나 / 주말 후에 시작해야 함
                 ends_before = model.NewBoolVar('')
                 starts_after = model.NewBoolVar('')
                 model.Add(interval_var.EndExpr() <= w_interval.StartExpr()).OnlyEnforceIf(ends_before)
                 model.Add(interval_var.StartExpr() >= w_interval.EndExpr()).OnlyEnforceIf(starts_after)
                 model.AddBoolOr([ends_before, starts_after])
-            # --- [주말 제약 추가 완료] ---
 
 
         all_last_tasks.append(tasks[(job_name, len(job_tasks) - 1)]['end'])
@@ -136,7 +116,7 @@ def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # [�
 
 
     # 목표 함수: 우선순위 가중치 강화
-    makespan = model.NewIntVar(0, estimated_horizon, 'makespan') # horizon -> estimated_horizon
+    makespan = model.NewIntVar(0, estimated_horizon, 'makespan')
     model.AddMaxEquality(makespan, all_last_tasks)
 
     objective_terms = []
@@ -167,6 +147,7 @@ def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # [�
                 start_time = solver.Value(task['start'])
                 end_time = solver.Value(task['end'])
 
+                # 막대 텍스트 조합 (<br> 사용)
                 bar_text = f"{job_name}<br>{task['task_name_disp']}<br>{task['batch_no']}"
 
                 schedule_results.append(dict(
@@ -188,7 +169,6 @@ def solve_job_shop_scheduling(jobs_data, all_machines, project_start_time): # [�
 
 # -----------------------------------------------------------------
 # [2. 데이터 로드 및 처리 함수 (Streamlit 캐시 적용)]
-# (수정 없음)
 # -----------------------------------------------------------------
 
 @st.cache_data
@@ -251,20 +231,18 @@ def load_and_parse_data(excel_path, sheet_name, cols_map):
 
     return jobs_data_parsed, all_machines, df
 
-# @st.cache_data 를 run_solver 함수 정의 위에 두어야 합니다.
 @st.cache_data
-def run_solver(_jobs_data, _all_machines, _project_start_time): # [✨ 인자 추가 ✨]
+def run_solver(_jobs_data, _all_machines, _project_start_time): # 인자 추가
     """
     캐시된 스케줄링 엔진을 실행합니다.
     _project_start_time 값이 바뀌면 캐시가 무효화되고 재계산됩니다.
     """
     print(f"--- APS 스케줄링 최적화 엔진 실행 (시작 시간: {_project_start_time}) ---")
-    # 실제 계산에는 jobs_data와 all_machines만 필요
+    # 실제 계산에는 jobs_data와 all_machines, project_start_time 필요
     return solve_job_shop_scheduling(_jobs_data, _all_machines, _project_start_time)
 
 # -----------------------------------------------------------------
 # [3. Streamlit 웹 애플리케이션 메인 로직]
-# (run_solver 호출 시 project_start_time 전달)
 # -----------------------------------------------------------------
 
 def run_app():
@@ -317,23 +295,18 @@ def run_app():
         "스케줄링 시작 날짜:",
         value=datetime.date.today()
     )
-    # 선택된 날짜의 08:30:00를 스케줄링 기준 시점 (PROJECT_START_TIME)으로 설정
     PROJECT_START_TIME = pd.to_datetime(scheduling_start_date) + pd.Timedelta(hours=8, minutes=30)
 
 
     # --- 2. 데이터 로드 및 스케줄링 실행 (캐시 활용) ---
     try:
-        # load_and_parse_data는 파일 경로만 필요
         jobs_data, all_machines, df_raw = load_and_parse_data(EXCEL_FILE_PATH, EXCEL_SHEET_NAME, COLS_MAP)
 
         if jobs_data is None:
              st.error("스케줄링할 데이터가 없습니다. (엑셀의 '소요시간(H)', '우선순위', '공정' 열 확인)")
              st.stop()
 
-        # --- [✨ run_solver 호출 시 PROJECT_START_TIME 전달 ✨] ---
-        # PROJECT_START_TIME 값이 바뀌면 run_solver 캐시가 무효화됨
-        results, makespan = run_solver(jobs_data, all_machines, PROJECT_START_TIME)
-        # --- [수정 완료] ---
+        results, makespan = run_solver(jobs_data, all_machines, PROJECT_START_TIME) # project_start_time 전달
 
         if results is None:
             st.stop()
@@ -412,7 +385,7 @@ def run_app():
             label_visibility="collapsed"
         )
 
-    st.sidebar.info(f"총 {len(jobs_data)}개 오더\n\n총 {makespan}시간 소요\n(우선순위/주말제외 적용됨)") # 문구 수정
+    st.sidebar.info(f"총 {len(jobs_data)}개 오더\n\n총 {makespan}시간 소요\n(우선순위/주말제외 적용됨)")
 
     # --- 4. 간트 차트 생성 및 필터링 ---
 
@@ -468,8 +441,10 @@ def run_app():
             hover_data=[COLS_MAP['priority'], COLS_MAP['batch']]
         )
 
-        # 주석 방식은 <br>을 인식하므로 텍스트 위치만 조정
-        fig.update_traces(textposition='middle center', textfont_size=10) # 중앙 정렬 및 폰트 크기 조절
+        # --- [✨ 텍스트 폰트 설정 수정 ✨] ---
+        # textfont_size 대신 textfont=dict(size=...) 사용
+        fig.update_traces(textposition='middle center', textfont=dict(size=10))
+        # --- [수정 완료] ---
 
         # (막대 늘어남 방지 및 날짜/시간 형식, 구분선)
         chart_height = (len(selected_machines) * 50) + 150
@@ -509,7 +484,6 @@ def run_app():
     with st.expander("필터링된 스케줄링 상세 데이터 보기 ('우선순위', '제조번호' 포함)"):
         display_cols = ['Job', 'Task', 'BatchNo', COLS_MAP['priority'], 'Machine', 'Start_dt', 'Finish_dt', 'Duration']
         df_display = df_filtered[display_cols].copy()
-        # [✨ 시간 표시 형식 수정 ✨] - 날짜만 필요하면 %H:%M 제거
         df_display['Start_dt'] = df_display['Start_dt'].dt.strftime('%Y-%m-%d %H:%M')
         df_display['Finish_dt'] = df_display['Finish_dt'].dt.strftime('%Y-%m-%d %H:%M')
         st.dataframe(df_display)
