@@ -7,7 +7,7 @@ import os
 
 # -----------------------------------------------------------------
 # [1. APS 스케줄링 최적화 엔진 함수]
-# (이 함수는 수정할 필요가 없습니다)
+# (시간제한 60초로 수정됨)
 # -----------------------------------------------------------------
 def solve_job_shop_scheduling(jobs_data, all_machines):
     """
@@ -99,8 +99,11 @@ def solve_job_shop_scheduling(jobs_data, all_machines):
     print(f"--- 우선순위 가중치 강화 (P1^3) 스케줄링 활성화 ---")
 
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 10.0
-    print(f"--- 솔버 시간제한 10초 설정 (테스트용) ---")
+
+    # --- [✨ 시간제한 60초로 수정 ✨] ---
+    solver.parameters.max_time_in_seconds = 60.0
+    print(f"--- 솔버 시간제한 60초 설정 ---")
+    # --- [수정 완료] ---
 
     status = solver.Solve(model)
 
@@ -193,17 +196,11 @@ def run_solver(jobs_data, all_machines):
 # [3. Streamlit 웹 애플리케이션 메인 로직]
 # -----------------------------------------------------------------
 
-# [✨ 툴팁 함수 제거 ✨]
-# def format_option_with_tooltip(option): ... (이 함수 삭제)
-
 def run_app():
 
     # --- 1. 기본 설정 ---
     st.set_page_config(layout="wide")
     st.title("APS 스케줄링 간트 차트 📈 (우선순위 반영)")
-
-    # [✨ CSS 스타일 주입 코드 제거 ✨]
-    # st.markdown("""...""", unsafe_allow_html=True) # <-- 이 부분 삭제됨
 
     excel_filename = 'pop_data.xlsx'
     try:
@@ -224,7 +221,7 @@ def run_app():
         'priority': '우선순위'
     }
 
-    PROJECT_START_TIME = pd.to_datetime('2025-10-21 09:00:00')
+    PROJECT_START_TIME = pd.to_datetime('2025-10-21 09:00:00') # <-- 현재 날짜/시간으로 변경 고려
 
     # --- 2. 데이터 로드 및 스케줄링 실행 (캐시 활용) ---
     try:
@@ -234,6 +231,7 @@ def run_app():
              st.error("스케줄링할 데이터가 없습니다. (엑셀의 '소요시간(H)', '우선순위' 열 확인)")
              st.stop()
 
+        # run_solver는 캐시되어 60초 로딩은 처음 한 번만 발생
         results, makespan = run_solver(jobs_data, all_machines)
 
         if results is None:
@@ -259,12 +257,10 @@ def run_app():
 
     start_date = st.sidebar.date_input(
         "조회 시작 날짜:",
-        value=PROJECT_START_TIME.date()
+        value=PROJECT_START_TIME.date() # <-- 기본값을 오늘 날짜로 변경 고려
     )
 
     st.sidebar.header("⚙️ 데이터 필터")
-
-    # --- [✨ 필터 위젯 format_func 제거 ✨] ---
 
     # (연동 필터 1: 부서명)
     all_departments = df_raw[COLS_MAP['department']].dropna().unique().tolist()
@@ -273,7 +269,6 @@ def run_app():
             "부서 선택:",
             options=sorted(all_departments),
             default=all_departments,
-            # format_func=format_option_with_tooltip, # <-- 제거
             label_visibility="collapsed"
         )
 
@@ -284,7 +279,6 @@ def run_app():
             "제품 선택:",
             options=sorted(relevant_products),
             default=relevant_products,
-            # format_func=format_option_with_tooltip, # <-- 제거
             label_visibility="collapsed"
         )
 
@@ -299,15 +293,13 @@ def run_app():
             "설비 선택:",
             options=sorted(relevant_machines),
             default=relevant_machines,
-            # format_func=format_option_with_tooltip, # <-- 제거
             label_visibility="collapsed"
         )
-    # --- [수정 완료] ---
 
     st.sidebar.info(f"총 {len(jobs_data)}개 오더\n\n총 {makespan}시간 소요\n(우선순위 적용됨)")
 
     # --- 4. 간트 차트 생성 및 필터링 ---
-    # ... (이하 간트 차트 생성 및 표시 로직은 이전과 동일) ...
+
     df_results = pd.DataFrame(results)
     df_results['Start_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Start'], unit='h')
     df_results['Finish_dt'] = PROJECT_START_TIME + pd.to_timedelta(df_results['Finish'], unit='h')
