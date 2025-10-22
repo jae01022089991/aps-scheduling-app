@@ -334,7 +334,7 @@ def run_app():
         
         fig.update_traces(textposition='inside')
 
-        # [✨ 차트 레이아웃 수정 (X축 상단 이동) ✨]
+        # [✨ 차트 레이아웃 수정 (날짜 형식 변경) ✨]
         
         chart_height = (len(selected_machines) * 50) + 150 
         
@@ -349,10 +349,10 @@ def run_app():
                 title_text="스케줄 시간",
                 tickfont=dict(size=12),
                 range=[start_datetime, end_datetime],
-                rangeslider=dict(visible=True), # 하단 스크롤바
-                side='top'                     # <-- X축을 위로 이동
+                rangeslider=dict(visible=True), 
+                side='top',
+                tickformat='%y-%m-%d' # <-- 날짜 형식 yy-mm-dd
             ),
-             # [추가] X축이 위로 가면서 제목과 겹칠 수 있으니 위쪽 여백(t) 증가
             margin=dict(l=50, r=250, t=100, b=50), 
             legend=dict(
                 title_text="제품명", 
