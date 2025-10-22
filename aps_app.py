@@ -7,7 +7,7 @@ import os
 
 # -----------------------------------------------------------------
 # [1. APS 스케줄링 최적화 엔진 함수]
-# (시간제한 60초로 수정됨)
+# (이 함수는 수정할 필요가 없습니다)
 # -----------------------------------------------------------------
 def solve_job_shop_scheduling(jobs_data, all_machines):
     """
@@ -99,11 +99,8 @@ def solve_job_shop_scheduling(jobs_data, all_machines):
     print(f"--- 우선순위 가중치 강화 (P1^3) 스케줄링 활성화 ---")
 
     solver = cp_model.CpSolver()
-
-    # --- [✨ 시간제한 60초로 수정 ✨] ---
-    solver.parameters.max_time_in_seconds = 60.0
+    solver.parameters.max_time_in_seconds = 60.0 # <-- 시간제한 60초로 복구
     print(f"--- 솔버 시간제한 60초 설정 ---")
-    # --- [수정 완료] ---
 
     status = solver.Solve(model)
 
@@ -155,6 +152,15 @@ def load_and_parse_data(excel_path, sheet_name, cols_map):
         df[cols_map['priority']] = df[cols_map['priority']].astype(int)
     except ValueError:
         raise ValueError(f"'{cols_map['priority']}' 열에 숫자가 아닌 값이 포함되어 있습니다.")
+
+    # [✨ 추가 ✨] '공정' 열도 숫자로 변환 시도 (정렬 위해)
+    try:
+        df[cols_map['step']] = pd.to_numeric(df[cols_map['step']], errors='coerce')
+        df = df.dropna(subset=[cols_map['step']]) # 숫자로 변환 안되면 제거
+        df[cols_map['step']] = df[cols_map['step']].astype(int)
+    except Exception as e:
+         raise ValueError(f"'{cols_map['step']}' 열을 숫자로 변환하는 데 실패했습니다: {e}")
+
 
     if df.empty:
         return None, None, None
@@ -221,17 +227,16 @@ def run_app():
         'priority': '우선순위'
     }
 
-    PROJECT_START_TIME = pd.to_datetime('2025-10-21 09:00:00') # <-- 현재 날짜/시간으로 변경 고려
+    PROJECT_START_TIME = pd.to_datetime('2025-10-21 09:00:00')
 
     # --- 2. 데이터 로드 및 스케줄링 실행 (캐시 활용) ---
     try:
         jobs_data, all_machines, df_raw = load_and_parse_data(EXCEL_FILE_PATH, EXCEL_SHEET_NAME, COLS_MAP)
 
         if jobs_data is None:
-             st.error("스케줄링할 데이터가 없습니다. (엑셀의 '소요시간(H)', '우선순위' 열 확인)")
+             st.error("스케줄링할 데이터가 없습니다. (엑셀의 '소요시간(H)', '우선순위', '공정' 열 확인)")
              st.stop()
 
-        # run_solver는 캐시되어 60초 로딩은 처음 한 번만 발생
         results, makespan = run_solver(jobs_data, all_machines)
 
         if results is None:
@@ -257,7 +262,7 @@ def run_app():
 
     start_date = st.sidebar.date_input(
         "조회 시작 날짜:",
-        value=PROJECT_START_TIME.date() # <-- 기본값을 오늘 날짜로 변경 고려
+        value=PROJECT_START_TIME.date()
     )
 
     st.sidebar.header("⚙️ 데이터 필터")
@@ -330,6 +335,20 @@ def run_app():
     if df_filtered.empty:
         st.warning("선택한 필터에 해당하는 데이터가 없습니다.")
     else:
+        # --- [✨ Y축 정렬 로직 추가 ✨] ---
+        # 1. 원본 데이터에서 설비별 '최소 공정 번호' 계산
+        #    (NaN 값은 큰 값으로 처리하여 맨 뒤로 보내기)
+        min_step_by_machine = df_raw.groupby(COLS_MAP['machine'])[COLS_MAP['step']].min().fillna(9999)
+
+        # 2. 사이드바에서 '선택된 설비 리스트'(selected_machines)를
+        #    '최소 공정 번호' 오름차순으로 정렬
+        sorted_selected_machines = sorted(
+            selected_machines,
+            key=lambda machine: min_step_by_machine.get(machine, 9999) # 없는 설비는 맨 뒤로
+        )
+        # --- [정렬 로직 추가 완료] ---
+
+
         # 4-2. 간트 차트 생성
         fig = px.timeline(
             df_filtered,
@@ -351,8 +370,9 @@ def run_app():
             height=chart_height,
             yaxis=dict(
                 tickfont=dict(size=14),
+                # [✨ 수정 ✨] categoryarray에 '정렬된' 설비 리스트 사용
                 categoryorder="array",
-                categoryarray=sorted(selected_machines, reverse=True)
+                categoryarray=sorted_selected_machines[::-1] # 내림차순(숫자 작은게 위) 대신 오름차순(숫자 작은게 위)으로 보이게 역순([::-1]) 적용
             ),
             xaxis=dict(
                 title_text="스케줄 시간",
